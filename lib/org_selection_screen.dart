@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'chat_list_screen.dart';
+import 'config.dart';
 
 class OrgSelectionScreen extends StatefulWidget {
   const OrgSelectionScreen({super.key});
@@ -14,8 +15,6 @@ class OrgSelectionScreen extends StatefulWidget {
 
 class _OrgSelectionScreenState extends State<OrgSelectionScreen> {
   final _storage = const FlutterSecureStorage();
-  final String baseUrl = "https://jvcftgdf.brs.devtunnels.ms:3000";
-
   List<dynamic> _orgs = [];
   bool _isLoading = true;
   String _errorMessage = '';

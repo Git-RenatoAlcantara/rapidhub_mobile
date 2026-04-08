@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'config.dart';
 import 'org_selection_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,8 +21,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
   String _errorMessage = '';
-
-  final String baseUrl = "https://jvcftgdf.brs.devtunnels.ms:3000";
 
   Future<void> _fazerLogin() async {
     final email = _emailController.text.trim();
