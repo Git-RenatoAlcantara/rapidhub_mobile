@@ -46,6 +46,12 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
+	    <key>NSMicrophoneUsageDescription</key>
+    <string>Precisamos acessar o microfone para gravar áudio.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Precisamos acessar a câmera para capturar fotos e vídeos.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Precisamos acessar sua galeria para enviar imagens e vídeos.</string>
 	<true/>
 </dict>
 </plist>
