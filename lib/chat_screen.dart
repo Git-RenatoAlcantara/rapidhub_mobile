@@ -41,6 +41,9 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  static const int _messagesPageSize = 40;
+  static const double _loadMoreThreshold = 120;
+
   final List<Map<String, dynamic>> _messages = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _ticketEvents = <Map<String, dynamic>>[];
   final TextEditingController _messageController = TextEditingController();
@@ -52,6 +55,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _connectionLabel;
   List<String> _contactTags = <String>[];
   bool _isLoading = true;
+  bool _isLoadingMoreMessages = false;
+  bool _hasMoreMessages = true;
+  String? _oldestMessageCursor;
   bool _isAssumingConversation = false;
 
   // Media / recording state
@@ -64,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _loadChatDetails();
     _loadMessages();
     _loadTicketEvents();
@@ -712,6 +719,295 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String _extractTargetIdFromJson(
+    dynamic payload, {
+    int depth = 0,
+  }) {
+    if (payload == null || depth > 6) {
+      return '';
+    }
+
+    if (payload is Map) {
+      final map = Map<String, dynamic>.from(payload);
+
+      final directKeys = <String>[
+        'memberId',
+        'member_id',
+        'userId',
+        'user_id',
+        'id',
+        'sub',
+      ];
+
+      for (final key in directKeys) {
+        final value = _asString(map[key]).trim();
+        if (value.isNotEmpty && value.toLowerCase() != 'null') {
+          return value;
+        }
+      }
+
+      final nestedPriorityKeys = <String>[
+        'user',
+        'member',
+        'session',
+        'data',
+        'result',
+        'profile',
+        'currentUser',
+      ];
+
+      for (final key in nestedPriorityKeys) {
+        if (!map.containsKey(key)) {
+          continue;
+        }
+        final nested = _extractTargetIdFromJson(map[key], depth: depth + 1);
+        if (nested.isNotEmpty) {
+          return nested;
+        }
+      }
+
+      for (final value in map.values) {
+        final nested = _extractTargetIdFromJson(value, depth: depth + 1);
+        if (nested.isNotEmpty) {
+          return nested;
+        }
+      }
+    }
+
+    if (payload is List) {
+      for (final item in payload) {
+        final nested = _extractTargetIdFromJson(item, depth: depth + 1);
+        if (nested.isNotEmpty) {
+          return nested;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  String _extractTargetIdFromToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final parts = trimmed.split('.');
+    if (parts.length < 2) {
+      return '';
+    }
+
+    try {
+      final normalized = base64Url.normalize(parts[1]);
+      final payloadBytes = base64Url.decode(normalized);
+      final payloadString = utf8.decode(payloadBytes);
+      final dynamic payloadJson = jsonDecode(payloadString);
+      return _extractTargetIdFromJson(payloadJson);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _extractEmailFromToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    final parts = trimmed.split('.');
+    if (parts.length < 2) {
+      return '';
+    }
+
+    try {
+      final normalized = base64Url.normalize(parts[1]);
+      final payloadBytes = base64Url.decode(normalized);
+      final payloadString = utf8.decode(payloadBytes);
+      final dynamic payloadJson = jsonDecode(payloadString);
+      if (payloadJson is! Map) {
+        return '';
+      }
+      final map = Map<String, dynamic>.from(payloadJson);
+
+      final directEmail = _asString(map['email']).trim().toLowerCase();
+      if (directEmail.isNotEmpty) {
+        return directEmail;
+      }
+
+      final dynamic userRaw = map['user'];
+      if (userRaw is Map) {
+        final userMap = Map<String, dynamic>.from(userRaw);
+        final nestedEmail = _asString(userMap['email']).trim().toLowerCase();
+        if (nestedEmail.isNotEmpty) {
+          return nestedEmail;
+        }
+      }
+    } catch (_) {
+      return '';
+    }
+
+    return '';
+  }
+
+  String _extractUserIdFromOrganizationPayload(
+    dynamic payload, {
+    String preferredEmail = '',
+  }) {
+    final members = <Map<String, dynamic>>[];
+
+    void collectMembers(dynamic node, int depth) {
+      if (node == null || depth > 6) {
+        return;
+      }
+
+      if (node is Map) {
+        final map = Map<String, dynamic>.from(node);
+        final dynamic membersRaw = map['members'];
+        if (membersRaw is List) {
+          for (final item in membersRaw) {
+            if (item is Map) {
+              members.add(Map<String, dynamic>.from(item));
+            }
+          }
+        }
+
+        for (final value in map.values) {
+          collectMembers(value, depth + 1);
+        }
+        return;
+      }
+
+      if (node is List) {
+        for (final item in node) {
+          collectMembers(item, depth + 1);
+        }
+      }
+    }
+
+    String userIdFromMember(Map<String, dynamic> member) {
+      final directUserId = _asString(member['userId']).trim();
+      if (directUserId.isNotEmpty) {
+        return directUserId;
+      }
+      final dynamic userRaw = member['user'];
+      if (userRaw is Map) {
+        final userMap = Map<String, dynamic>.from(userRaw);
+        final nestedUserId = _asString(userMap['id']).trim();
+        if (nestedUserId.isNotEmpty) {
+          return nestedUserId;
+        }
+      }
+      return '';
+    }
+
+    collectMembers(payload, 0);
+    if (members.isEmpty) {
+      return '';
+    }
+
+    final normalizedPreferredEmail = preferredEmail.trim().toLowerCase();
+    if (normalizedPreferredEmail.isNotEmpty) {
+      for (final member in members) {
+        final dynamic userRaw = member['user'];
+        if (userRaw is! Map) {
+          continue;
+        }
+        final userMap = Map<String, dynamic>.from(userRaw);
+        final memberEmail = _asString(userMap['email']).trim().toLowerCase();
+        if (memberEmail.isEmpty || memberEmail != normalizedPreferredEmail) {
+          continue;
+        }
+        final matchedUserId = userIdFromMember(member);
+        if (matchedUserId.isNotEmpty) {
+          return matchedUserId;
+        }
+      }
+    }
+
+    if (members.length == 1) {
+      return userIdFromMember(members.first);
+    }
+
+    return '';
+  }
+
+  Future<String> _resolveTransferTargetId({
+    required String token,
+    required Map<String, String> headers,
+    required String organizationId,
+    String preferredEmail = '',
+  }) async {
+    final fromToken = _extractTargetIdFromToken(token);
+    if (fromToken.isNotEmpty) {
+      return fromToken;
+    }
+
+    final sessionEndpoints = <String>[
+      '/api/auth/get-session',
+      '/api/auth/session',
+      '/api/auth/me',
+      '/api/me',
+      '/api/users/me',
+      '/api/member/me',
+      '/api/members/me',
+    ];
+
+    for (final path in sessionEndpoints) {
+      try {
+        final uri = Uri.parse('$baseUrl$path');
+        final resp = await http.get(uri, headers: headers);
+        debugPrint('Resolve targetId => GET $uri status=${resp.statusCode}');
+
+        if (resp.statusCode < 200 || resp.statusCode >= 300) {
+          continue;
+        }
+        if (resp.body.trim().isEmpty) {
+          continue;
+        }
+
+        final dynamic decoded = jsonDecode(resp.body);
+        final foundId = _extractTargetIdFromJson(decoded);
+        if (foundId.isNotEmpty) {
+          return foundId;
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar sessao para transfer: $e');
+      }
+    }
+
+    if (organizationId.trim().isNotEmpty) {
+      try {
+        final orgUri =
+            Uri.parse('$baseUrl/api/auth/get-organization').replace(
+          queryParameters: {
+            'organizationId': organizationId.trim(),
+          },
+        );
+        final orgResp = await http.get(orgUri, headers: headers);
+        debugPrint(
+          'Resolve targetId => GET $orgUri status=${orgResp.statusCode}',
+        );
+
+        if (orgResp.statusCode >= 200 &&
+            orgResp.statusCode < 300 &&
+            orgResp.body.trim().isNotEmpty) {
+          final dynamic orgDecoded = jsonDecode(orgResp.body);
+          final memberUserId = _extractUserIdFromOrganizationPayload(
+            orgDecoded,
+            preferredEmail: preferredEmail,
+          );
+          if (memberUserId.isNotEmpty) {
+            return memberUserId;
+          }
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar organization para transfer: $e');
+      }
+    }
+
+    return '';
+  }
+
   Future<void> _assumeConversation() async {
     if (_isAssumingConversation) {
       return;
@@ -722,51 +1018,147 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     final token = await _storage.read(key: 'session_token');
+    final tokenValue = _asString(token);
+    if (tokenValue.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isAssumingConversation = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sessao expirada. Faz login novamente.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
+      'Authorization': 'Bearer $tokenValue',
     };
 
+    if (_chatDetails == null) {
+      await _loadChatDetails();
+    }
+
+    final targetCandidates = <Map<String, String>>[];
+    final seenTargets = <String>{};
+    void addTarget(String targetId, String targetType) {
+      final id = targetId.trim();
+      final type = targetType.trim().toLowerCase();
+      if (id.isEmpty || type.isEmpty) {
+        return;
+      }
+      final key = '$type::$id';
+      if (seenTargets.contains(key)) {
+        return;
+      }
+      seenTargets.add(key);
+      targetCandidates.add({
+        'targetId': id,
+        'targetType': type,
+      });
+    }
+
+    final cachedUserId = _asString(await _storage.read(key: 'current_user_id'));
+    addTarget(cachedUserId, 'user');
+
+    final preferredEmail = _firstNonEmpty([
+      _asString(await _storage.read(key: 'user_email')).trim().toLowerCase(),
+      _extractEmailFromToken(tokenValue),
+    ]);
+    final organizationId = _asString(_chatDetails?['organizationId']);
+    final resolvedTargetId =
+        await _resolveTransferTargetId(
+      token: tokenValue,
+      headers: headers,
+      organizationId: organizationId,
+      preferredEmail: preferredEmail,
+    );
+    if (resolvedTargetId.isNotEmpty) {
+      await _storage.write(key: 'current_user_id', value: resolvedTargetId);
+    }
+
+    addTarget(resolvedTargetId, 'user');
+    addTarget(resolvedTargetId, 'agent');
+    addTarget(_asString(_chatDetails?['attendantId']), 'user');
+    addTarget(_asString(_chatDetails?['assignedUserId']), 'user');
+    addTarget(_asString(_chatDetails?['agentId']), 'agent');
+    addTarget(_asString(_chatDetails?['activeAgentId']), 'agent');
+    addTarget(_asString(_chatDetails?['departmentId']), 'department');
+
+    for (final target in targetCandidates) {
+      debugPrint(
+        'Assume target candidate => type=${target['targetType']} id=${target['targetId']}',
+      );
+    }
+
+    if (targetCandidates.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isAssumingConversation = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nao foi possivel identificar o destino para assumir.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    final transferUri =
+        Uri.parse('$baseUrl/api/tickets/${widget.chatId}/transfer');
     final attempts = <Future<http.Response> Function()>[
-      () => http.post(
-            Uri.parse('$baseUrl/api/chats/${widget.chatId}/assume'),
-            headers: headers,
-          ),
-      () => http.patch(
-            Uri.parse('$baseUrl/api/chats/${widget.chatId}'),
-            headers: headers,
-            body: jsonEncode({'action': 'assume'}),
-          ),
-      () => http.patch(
-            Uri.parse('$baseUrl/api/chats/${widget.chatId}'),
-            headers: headers,
-            body: jsonEncode({'status': 'open'}),
-          ),
+      for (final target in targetCandidates)
+        () => http.patch(
+              transferUri,
+              headers: headers,
+              body: jsonEncode(target),
+            ),
     ];
 
     bool success = false;
     int lastStatusCode = 0;
     String lastBody = '';
+    String lastError = '';
 
-    try {
-      for (final attempt in attempts) {
+    for (final attempt in attempts) {
+      try {
         final resp = await attempt();
         lastStatusCode = resp.statusCode;
         lastBody = resp.body;
+        debugPrint(
+          'Assume attempt => ${resp.request?.method} ${resp.request?.url} status=${resp.statusCode}',
+        );
 
         if (resp.statusCode >= 200 && resp.statusCode < 300) {
           success = true;
           break;
         }
 
-        if (resp.statusCode == 404 || resp.statusCode == 405) {
-          continue;
+        if (resp.statusCode == 401 || resp.statusCode == 403) {
+          break;
         }
-
-        break;
       }
-    } catch (e) {
-      debugPrint('Erro ao assumir conversa: $e');
+      catch (e) {
+        lastError = '$e';
+        debugPrint('Erro ao assumir conversa: $e');
+      }
+    }
+
+    // Somente API: o estado da tela deve vir do backend.
+    if (success) {
+      await _loadChatDetails();
+      if (_isPendingConversation) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        await _loadChatDetails();
+      }
     }
 
     if (!mounted) {
@@ -775,13 +1167,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() {
       _isAssumingConversation = false;
-      if (success) {
-        final current = _chatDetails ?? <String, dynamic>{};
-        _chatDetails = {
-          ...current,
-          'ticketStatus': 'open',
-        };
-      }
     });
 
     if (success) {
@@ -791,26 +1176,115 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      _loadChatDetails();
       return;
     }
 
+    final apiLabel =
+        lastStatusCode > 0 ? 'Status: $lastStatusCode' : 'sem resposta da API';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Nao foi possivel assumir a conversa. (Status: $lastStatusCode)',
+          'Nao foi possivel assumir a conversa via API. ($apiLabel)',
         ),
         backgroundColor: Colors.redAccent,
       ),
     );
     debugPrint('Falha ao assumir conversa. Body: $lastBody');
+    if (lastError.isNotEmpty) {
+      debugPrint('Ultimo erro ao assumir conversa: $lastError');
+    }
   }
 
-  Future<void> _loadMessages() async {
+  Uri _messagesEndpointUri({String? before}) {
+    final queryParameters = <String, String>{
+      'limit': _messagesPageSize.toString(),
+    };
+
+    if (before != null && before.isNotEmpty) {
+      queryParameters['before'] = before;
+    }
+
+    return Uri.parse('$baseUrl/api/chats/${widget.chatId}/messages').replace(
+      queryParameters: queryParameters,
+    );
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients ||
+        _isLoading ||
+        _isLoadingMoreMessages ||
+        !_hasMoreMessages) {
+      return;
+    }
+
+    if (_scrollController.position.pixels <= _loadMoreThreshold) {
+      _loadMessages(loadMore: true);
+    }
+  }
+
+  String? _resolveOldestMessageCursor() {
+    if (_messages.isEmpty) {
+      return null;
+    }
+
+    final oldestTimestamp = _asString(_messages.first['timestamp']);
+    return oldestTimestamp.isEmpty ? null : oldestTimestamp;
+  }
+
+  void _keepScrollPositionAfterPrepend(double previousMaxScrollExtent) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) {
+        return;
+      }
+
+      final newMaxScrollExtent = _scrollController.position.maxScrollExtent;
+      final delta = newMaxScrollExtent - previousMaxScrollExtent;
+      if (delta <= 0) {
+        return;
+      }
+
+      final targetOffset = _scrollController.offset + delta;
+      final clampedOffset = targetOffset.clamp(
+        _scrollController.position.minScrollExtent,
+        _scrollController.position.maxScrollExtent,
+      );
+      _scrollController.jumpTo(clampedOffset.toDouble());
+    });
+  }
+
+  Future<void> _loadMessages({bool loadMore = false}) async {
+    if (loadMore) {
+      if (_isLoading || _isLoadingMoreMessages || !_hasMoreMessages) {
+        return;
+      }
+      if (_oldestMessageCursor == null || _oldestMessageCursor!.isEmpty) {
+        return;
+      }
+    }
+
+    final beforeCursor = loadMore ? _oldestMessageCursor : null;
+    final previousMessageCount = _messages.length;
+    final previousCursor = _oldestMessageCursor;
+    final previousMaxScrollExtent =
+        loadMore && _scrollController.hasClients
+            ? _scrollController.position.maxScrollExtent
+            : 0.0;
+
+    if (mounted) {
+      setState(() {
+        if (loadMore) {
+          _isLoadingMoreMessages = true;
+        } else {
+          _isLoading = true;
+          _hasMoreMessages = true;
+        }
+      });
+    }
+
     try {
       final token = await _storage.read(key: 'session_token');
       final resp = await http.get(
-        Uri.parse('$baseUrl/api/chats/${widget.chatId}/messages'),
+        _messagesEndpointUri(before: beforeCursor),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -829,20 +1303,72 @@ class _ChatScreenState extends State<ChatScreen> {
             .map((raw) => _normalizeMessage(Map<String, dynamic>.from(raw)))
             .toList();
 
+        final pagination = decoded is Map ? decoded['pagination'] : null;
+        final hasMoreFromApi =
+            pagination is Map && pagination['hasMore'] is bool
+                ? pagination['hasMore'] as bool
+                : null;
+        final nextBeforeFromApi =
+            pagination is Map ? _asString(pagination['nextBefore']) : '';
+
+        if (!mounted) {
+          return;
+        }
+
         setState(() {
-          _messages
-            ..clear()
-            ..addAll(normalized);
+          if (loadMore) {
+            for (final message in normalized) {
+              _addOrUpdateMessage(message);
+            }
+          } else {
+            _messages
+              ..clear()
+              ..addAll(normalized);
+          }
+
           _sortMessages();
+          _oldestMessageCursor = nextBeforeFromApi.isNotEmpty
+              ? nextBeforeFromApi
+              : _resolveOldestMessageCursor();
+          final didGrow = _messages.length > previousMessageCount;
+          if (hasMoreFromApi != null) {
+            _hasMoreMessages = hasMoreFromApi && (didGrow || !loadMore);
+          } else {
+            _hasMoreMessages = normalized.length >= _messagesPageSize &&
+                _oldestMessageCursor != previousCursor;
+          }
+          if (loadMore && !didGrow) {
+            _hasMoreMessages = false;
+          }
           _isLoading = false;
+          _isLoadingMoreMessages = false;
         });
-        _scrollToBottom();
+        if (loadMore) {
+          _keepScrollPositionAfterPrepend(previousMaxScrollExtent);
+        } else {
+          _scrollToBottom();
+        }
       } else {
-        setState(() => _isLoading = false);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _isLoading = false;
+          _isLoadingMoreMessages = false;
+          if (loadMore) {
+            _hasMoreMessages = false;
+          }
+        });
       }
     } catch (e) {
       debugPrint('Erro ao carregar mensagens: $e');
-      setState(() => _isLoading = false);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _isLoadingMoreMessages = false;
+      });
     }
   }
 
@@ -1716,6 +2242,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _sseSubscription?.cancel();
     _messageController.dispose();
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _recordingTimer?.cancel();
     _audioRecorder.dispose();
@@ -1730,6 +2257,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ? _asString(widget.initialChatName)
             : 'Chat');
     final timelineItems = _buildTimelineItems();
+    final showLoadMoreIndicator = _isLoadingMoreMessages && _hasMoreMessages;
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
@@ -1818,9 +2346,29 @@ class _ChatScreenState extends State<ChatScreen> {
                           horizontal: 12,
                           vertical: 8,
                         ),
-                        itemCount: timelineItems.length,
+                        itemCount:
+                            timelineItems.length +
+                            (showLoadMoreIndicator ? 1 : 0),
                         itemBuilder: (context, index) {
-                          final item = timelineItems[index];
+                          if (showLoadMoreIndicator && index == 0) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 10),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          final timelineIndex =
+                              showLoadMoreIndicator ? index - 1 : index;
+                          final item = timelineItems[timelineIndex];
                           if (_asString(item['itemType']) == 'event') {
                             return _buildTimelineEvent(item);
                           }

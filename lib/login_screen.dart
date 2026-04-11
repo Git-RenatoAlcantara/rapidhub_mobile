@@ -54,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (token.toString().isNotEmpty) {
           await _storage.write(key: 'session_token', value: token.toString());
+          await _storage.write(key: 'user_email', value: email.toLowerCase());
 
           if (!mounted) return;
           Navigator.pushReplacement(
