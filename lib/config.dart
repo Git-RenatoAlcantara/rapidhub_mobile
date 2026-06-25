@@ -1,1 +1,1 @@
-const String baseUrl = "https://rapidfinance.com.br";
+const String baseUrl = "https://rapidhub.com.br";

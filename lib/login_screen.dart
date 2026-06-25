@@ -92,11 +92,14 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.chat_bubble_outline,
-                  color: Colors.blue, size: 80),
+              Image.asset(
+                'assets/icon/logo.png',
+                width: 100,
+                height: 100,
+              ),
               const SizedBox(height: 16),
               const Text(
-                'Rapidhub',
+                'Hubi',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 28,

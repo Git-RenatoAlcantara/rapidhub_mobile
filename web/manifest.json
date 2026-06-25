@@ -1,6 +1,6 @@
 {
-"name": "RapidHub",
-"short_name": "RapidHub",
+    "name": "Hubi",
+    "short_name": "Hubi",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

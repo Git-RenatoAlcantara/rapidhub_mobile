@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'chat_list_screen.dart';
+import 'login_screen.dart';
 import 'config.dart';
 
 class OrgSelectionScreen extends StatefulWidget {
@@ -45,6 +46,8 @@ class _OrgSelectionScreenState extends State<OrgSelectionScreen> {
           _orgs = orgs;
           _isLoading = false;
         });
+      } else if (resp.statusCode == 401) {
+        await _logoutAndGoToLogin();
       } else {
         setState(() {
           _errorMessage = 'Erro ao carregar organizações.';
@@ -58,6 +61,16 @@ class _OrgSelectionScreenState extends State<OrgSelectionScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _logoutAndGoToLogin() async {
+    // Token inválido/expirado (ou de outro domínio): limpa tudo e volta ao login
+    await _storage.deleteAll();
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
   }
 
   Future<void> _selectOrg(String orgId) async {

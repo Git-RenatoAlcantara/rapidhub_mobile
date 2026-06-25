@@ -20,6 +20,8 @@ import 'package:video_player/video_player.dart';
 
 import 'config.dart';
 
+String _s(dynamic v) => v?.toString() ?? '';
+
 class ChatScreen extends StatefulWidget {
   final String chatId;
   final String? initialTicketStatus;
@@ -44,6 +46,10 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _messagesPageSize = 40;
   static const double _loadMoreThreshold = 120;
 
+  // Cache de templates aprovados por connectionId (persiste entre aberturas
+  // da sheet e entre conversas da mesma conexao).
+  static final Map<String, List<Map<String, dynamic>>> _templatesCache = {};
+
   final List<Map<String, dynamic>> _messages = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _ticketEvents = <Map<String, dynamic>>[];
   final TextEditingController _messageController = TextEditingController();
@@ -59,6 +65,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _hasMoreMessages = true;
   String? _oldestMessageCursor;
   bool _isAssumingConversation = false;
+  bool _isUpdatingTicketStatus = false;
 
   // Media / recording state
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -544,10 +551,218 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool get _isPendingConversation {
-    final status = _asString(
-      _chatDetails?['ticketStatus'] ?? widget.initialTicketStatus,
-    ).toLowerCase();
-    return status == 'pending';
+    return _ticketStatus == 'pending';
+  }
+
+  String get _ticketStatus {
+    final directStatus = _asString(_chatDetails?['ticketStatus']).trim();
+    if (directStatus.isNotEmpty) {
+      return directStatus.toLowerCase();
+    }
+
+    final dynamic ticket = _chatDetails?['ticket'];
+    if (ticket is Map) {
+      final nestedStatus = _asString(ticket['status']).trim();
+      if (nestedStatus.isNotEmpty) {
+        return nestedStatus.toLowerCase();
+      }
+    }
+
+    return _asString(widget.initialTicketStatus).trim().toLowerCase();
+  }
+
+  bool get _isOpenConversation {
+    return _ticketStatus == 'open';
+  }
+
+  String get _connectionId {
+    final direct = _asString(_chatDetails?['connectionId']).trim();
+    if (direct.isNotEmpty) return direct;
+    final dynamic conn = _chatDetails?['connection'];
+    if (conn is Map) {
+      final nested = _asString(conn['id']).trim();
+      if (nested.isNotEmpty) return nested;
+    }
+    return '';
+  }
+
+  Future<void> _archiveTicketIfOpen() async {
+    if (_isUpdatingTicketStatus) {
+      return;
+    }
+
+    if (!_isOpenConversation) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Apenas tickets com status open podem ser arquivados.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final token = await _storage.read(key: 'session_token');
+    if (_asString(token).isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sessao invalida. Faca login novamente.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isUpdatingTicketStatus = true;
+      });
+    }
+
+    try {
+      final resp = await http.patch(
+        Uri.parse('$baseUrl/api/tickets/${widget.chatId}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'action': 'archive'}),
+      );
+
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        await _loadChatDetails();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ticket arquivado com sucesso.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Nao foi possivel arquivar o ticket. Status: ${resp.statusCode}',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao arquivar ticket: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao arquivar ticket.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingTicketStatus = false;
+        });
+      }
+    }
+  }
+
+  // ───────────────────── SEND TEMPLATE ─────────────────────
+
+  Future<void> _showSendTemplateSheet() async {
+    final connectionId = _connectionId;
+    if (connectionId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conexao nao identificada para carregar templates.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    final token = await _storage.read(key: 'session_token');
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _SendTemplateSheet(
+        chatId: widget.chatId,
+        connectionId: connectionId,
+        cachedTemplates: _templatesCache[connectionId],
+        onTemplatesLoaded: (list) => _templatesCache[connectionId] = list,
+        token: token ?? '',
+        baseUrl: baseUrl,
+        onSuccess: () {
+          Navigator.pop(ctx);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Template enviado com sucesso.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  // ───────────────────── FOLLOW-UP ─────────────────────
+
+  Future<void> _showFollowUpSheet() async {
+    final token = await _storage.read(key: 'session_token');
+    Map<String, dynamic>? followUp;
+    String? fetchError;
+    try {
+      final resp = await http.get(
+        Uri.parse('$baseUrl/api/tickets/${widget.chatId}/followup'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body);
+        final raw = decoded['followUp'];
+        if (raw is Map) {
+          followUp = Map<String, dynamic>.from(raw);
+        }
+      } else if (resp.statusCode != 404) {
+        fetchError = 'Erro ao carregar follow-up (${resp.statusCode})';
+      }
+    } catch (_) {
+      fetchError = 'Erro de conexao ao carregar follow-up.';
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _FollowUpSheet(
+        ticketId: widget.chatId,
+        initialFollowUp: followUp,
+        fetchError: fetchError,
+        token: token ?? '',
+        baseUrl: baseUrl,
+      ),
+    );
   }
 
   String _formatConnectionLabel(String name, String phone) {
@@ -977,8 +1192,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (organizationId.trim().isNotEmpty) {
       try {
-        final orgUri =
-            Uri.parse('$baseUrl/api/auth/get-organization').replace(
+        final orgUri = Uri.parse('$baseUrl/api/auth/get-organization').replace(
           queryParameters: {
             'organizationId': organizationId.trim(),
           },
@@ -1071,8 +1285,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _extractEmailFromToken(tokenValue),
     ]);
     final organizationId = _asString(_chatDetails?['organizationId']);
-    final resolvedTargetId =
-        await _resolveTransferTargetId(
+    final resolvedTargetId = await _resolveTransferTargetId(
       token: tokenValue,
       headers: headers,
       organizationId: organizationId,
@@ -1145,8 +1358,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (resp.statusCode == 401 || resp.statusCode == 403) {
           break;
         }
-      }
-      catch (e) {
+      } catch (e) {
         lastError = '$e';
         debugPrint('Erro ao assumir conversa: $e');
       }
@@ -1265,10 +1477,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final beforeCursor = loadMore ? _oldestMessageCursor : null;
     final previousMessageCount = _messages.length;
     final previousCursor = _oldestMessageCursor;
-    final previousMaxScrollExtent =
-        loadMore && _scrollController.hasClients
-            ? _scrollController.position.maxScrollExtent
-            : 0.0;
+    final previousMaxScrollExtent = loadMore && _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
 
     if (mounted) {
       setState(() {
@@ -1565,7 +1776,8 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  String _normalizeMessageStatus(dynamic rawStatus, {String fallback = 'sent'}) {
+  String _normalizeMessageStatus(dynamic rawStatus,
+      {String fallback = 'sent'}) {
     final status = _asString(rawStatus).trim().toLowerCase();
     if (status == 'read') return 'read';
     if (status == 'delivered') return 'delivered';
@@ -1605,8 +1817,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   List<Map<String, dynamic>> _buildTimelineItems() {
     final items = <Map<String, dynamic>>[
-      ..._messages
-          .map((message) => <String, dynamic>{...message, 'itemType': 'message'}),
+      ..._messages.map(
+          (message) => <String, dynamic>{...message, 'itemType': 'message'}),
       ..._ticketEvents
           .map((event) => <String, dynamic>{...event, 'itemType': 'event'}),
     ];
@@ -2076,7 +2288,8 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.insert_drive_file, color: Colors.white70, size: 18),
+              const Icon(Icons.insert_drive_file,
+                  color: Colors.white70, size: 18),
               const SizedBox(width: 8),
               Flexible(
                 child: Column(
@@ -2120,7 +2333,8 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFBBF24), size: 18),
+          const Icon(Icons.warning_amber_rounded,
+              color: Color(0xFFFBBF24), size: 18),
           const SizedBox(width: 8),
           Flexible(
             child: Column(
@@ -2173,7 +2387,8 @@ class _ChatScreenState extends State<ChatScreen> {
       children.add(_buildMediaUnavailablePlaceholder(message));
     }
 
-    final shouldRenderText = text.isNotEmpty && !(messageType == 'document' && hasMedia);
+    final shouldRenderText =
+        text.isNotEmpty && !(messageType == 'document' && hasMedia);
     if (shouldRenderText) {
       if (children.isNotEmpty) {
         children.add(const SizedBox(height: 8));
@@ -2266,6 +2481,71 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: const Color(0xFF161B22),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
+        actions: [
+          if (_isOpenConversation)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              color: const Color(0xFF1E2733),
+              onSelected: (value) {
+                if (value == 'template') _showSendTemplateSheet();
+                if (value == 'followup') _showFollowUpSheet();
+                if (value == 'archive') _archiveTicketIfOpen();
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'template',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.send_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Enviar Template',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'followup',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.schedule_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Agendar Follow-up',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'archive',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.archive_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Arquivar ticket',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -2346,8 +2626,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           horizontal: 12,
                           vertical: 8,
                         ),
-                        itemCount:
-                            timelineItems.length +
+                        itemCount: timelineItems.length +
                             (showLoadMoreIndicator ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (showLoadMoreIndicator && index == 0) {
@@ -2375,9 +2654,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
                           final message = item;
                           final isMe = _asString(message['sender']) == 'user';
-                          final timeLabel = _formatMessageTime(message['timestamp']);
+                          final timeLabel =
+                              _formatMessageTime(message['timestamp']);
                           final statusIcon = isMe
-                              ? _buildMessageStatusIcon(_asString(message['status']))
+                              ? _buildMessageStatusIcon(
+                                  _asString(message['status']))
                               : null;
 
                           return Align(
@@ -2581,6 +2862,1102 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ───────────────────── SEND TEMPLATE SHEET ─────────────────────
+
+class _SendTemplateSheet extends StatefulWidget {
+  final String chatId;
+  final String connectionId;
+  final List<Map<String, dynamic>>? cachedTemplates;
+  final ValueChanged<List<Map<String, dynamic>>> onTemplatesLoaded;
+  final String token;
+  final String baseUrl;
+  final VoidCallback onSuccess;
+
+  const _SendTemplateSheet({
+    required this.chatId,
+    required this.connectionId,
+    required this.cachedTemplates,
+    required this.onTemplatesLoaded,
+    required this.token,
+    required this.baseUrl,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_SendTemplateSheet> createState() => _SendTemplateSheetState();
+}
+
+class _SendTemplateSheetState extends State<_SendTemplateSheet> {
+  Map<String, dynamic>? _selected;
+  final Map<String, TextEditingController> _varCtrl = {};
+  bool _isSending = false;
+  String? _sendError;
+
+  List<Map<String, dynamic>> _templates = [];
+  bool _loading = false;
+  String? _fetchError;
+
+  @override
+  void initState() {
+    super.initState();
+    final cached = widget.cachedTemplates;
+    if (cached != null) {
+      _templates = cached;
+    } else {
+      _loadTemplates();
+    }
+  }
+
+  Future<void> _loadTemplates() async {
+    setState(() {
+      _loading = true;
+      _fetchError = null;
+    });
+    try {
+      final resp = await http.get(
+        Uri.parse(
+          '${widget.baseUrl}/api/templates/meta?connectionId=${widget.connectionId}',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body);
+        final raw = decoded['templates'];
+        final list = <Map<String, dynamic>>[];
+        if (raw is List) {
+          list.addAll(
+            raw
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .where((t) => _s(t['status']).toUpperCase() == 'APPROVED'),
+          );
+        }
+        widget.onTemplatesLoaded(list);
+        setState(() {
+          _templates = list;
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _fetchError = 'Erro ao carregar templates (${resp.statusCode})';
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _fetchError = 'Erro de conexao ao carregar templates.';
+        _loading = false;
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> _vars(Map<String, dynamic> tpl) {
+    final result = <Map<String, dynamic>>[];
+    final components = tpl['components'];
+    if (components is! List) return result;
+    for (final comp in components) {
+      if (comp is! Map) continue;
+      final type = _s(comp['type']).toUpperCase();
+      final text = _s(comp['text']);
+      final format = _s(comp['format']).toUpperCase();
+      if ((type == 'HEADER' && format == 'TEXT') || type == 'BODY') {
+        for (final m in RegExp(r'\{\{([^}]+)\}\}').allMatches(text)) {
+          final name = m.group(1)!.trim();
+          result.add({
+            'componentType': type == 'HEADER' ? 'header' : 'body',
+            'name': name,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
+  void _select(Map<String, dynamic> tpl) {
+    for (final c in _varCtrl.values) c.dispose();
+    _varCtrl.clear();
+    for (final v in _vars(tpl)) {
+      _varCtrl['${v['componentType']}:${v['name']}'] = TextEditingController();
+    }
+    setState(() {
+      _selected = tpl;
+      _sendError = null;
+    });
+  }
+
+  Future<void> _send() async {
+    final tpl = _selected;
+    if (tpl == null) return;
+    setState(() {
+      _isSending = true;
+      _sendError = null;
+    });
+    try {
+      final variables = _vars(tpl);
+      List<Map<String, dynamic>>? components;
+      if (variables.isNotEmpty) {
+        final grouped = <String, List<Map<String, dynamic>>>{};
+        for (final v in variables) {
+          final key = '${v['componentType']}:${v['name']}';
+          final val = _varCtrl[key]?.text.trim() ?? '';
+          grouped.putIfAbsent(v['componentType'] as String, () => []);
+          grouped[v['componentType']]!.add({
+            'parameter_name': v['name'],
+            'type': 'text',
+            'text': val,
+          });
+        }
+        components = grouped.entries
+            .map((e) => {'type': e.key, 'parameters': e.value})
+            .toList();
+      }
+      final body = <String, dynamic>{
+        'templateName': _s(tpl['name']),
+        'languageCode': _s(tpl['language']),
+        if (components != null) 'components': components,
+      };
+      final resp = await http.post(
+        Uri.parse(
+          '${widget.baseUrl}/api/chats/${widget.chatId}/send-template',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+        body: jsonEncode(body),
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        widget.onSuccess();
+      } else {
+        final decoded = jsonDecode(resp.body);
+        final errMsg = _s(decoded['error']).isNotEmpty
+            ? _s(decoded['error'])
+            : _s(decoded['message']).isNotEmpty
+                ? _s(decoded['message'])
+                : 'Erro ao enviar template (${resp.statusCode})';
+        setState(() => _sendError = errMsg);
+      }
+    } catch (e) {
+      setState(() => _sendError = 'Erro de conexao');
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _varCtrl.values) c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, controller) {
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+              child: Row(
+                children: [
+                  if (_selected != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () => setState(() {
+                          _selected = null;
+                          _sendError = null;
+                        }),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _selected != null
+                              ? _s(_selected!['name'])
+                              : 'Enviar Template',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _selected != null
+                              ? 'Preencha os parametros e envie'
+                              : 'Selecione um template aprovado',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_selected == null)
+                    IconButton(
+                      onPressed: _loading ? null : _loadTemplates,
+                      icon: const Icon(Icons.refresh,
+                          color: Colors.white54, size: 20),
+                      tooltip: 'Recarregar templates',
+                    ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.5, color: Colors.white54),
+                          ),
+                          SizedBox(height: 14),
+                          Text(
+                            'Carregando templates...',
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _fetchError != null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _fetchError!,
+                                  style:
+                                      const TextStyle(color: Colors.redAccent),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 14),
+                                OutlinedButton.icon(
+                                  onPressed: _loadTemplates,
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Tentar novamente'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: Colors.white70,
+                                    side: const BorderSide(
+                                        color: Colors.white24),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : _selected == null
+                          ? _buildList(controller)
+                          : _buildForm(controller),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildList(ScrollController controller) {
+    if (_templates.isEmpty) {
+      return const Center(
+        child: Text(
+          'Nenhum template aprovado encontrado.',
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+    return ListView.separated(
+      controller: controller,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: _templates.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, i) {
+        final tpl = _templates[i];
+        final name = _s(tpl['name']);
+        final language = _s(tpl['language']);
+        final category = _s(tpl['category']);
+        String bodyText = '';
+        final comps = tpl['components'];
+        if (comps is List) {
+          for (final c in comps) {
+            if (c is Map && _s(c['type']).toUpperCase() == 'BODY') {
+              bodyText = _s(c['text']);
+              break;
+            }
+          }
+        }
+        return InkWell(
+          onTap: () => _select(tpl),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E2733),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      language,
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+                if (bodyText.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(bodyText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12))
+                ],
+                if (category.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(category.toUpperCase(),
+                      style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold))
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildForm(ScrollController controller) {
+    final tpl = _selected!;
+    final variables = _vars(tpl);
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        if (_sendError != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
+            ),
+            child: Text(
+              _sendError!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('PREVIEW',
+                  style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1)),
+              const SizedBox(height: 8),
+              ...() {
+                final comps = tpl['components'];
+                if (comps is! List) return <Widget>[];
+                return comps.map<Widget>((comp) {
+                  if (comp is! Map) return const SizedBox.shrink();
+                  final type = _s(comp['type']).toUpperCase();
+                  final text = _s(comp['text']);
+                  if ((type == 'HEADER' ||
+                          type == 'BODY' ||
+                          type == 'FOOTER') &&
+                      text.isNotEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(text,
+                          style: TextStyle(
+                              color: type == 'FOOTER'
+                                  ? Colors.white38
+                                  : Colors.white70,
+                              fontSize: type == 'HEADER' ? 14 : 12,
+                              fontWeight: type == 'HEADER'
+                                  ? FontWeight.bold
+                                  : FontWeight.normal)),
+                    );
+                  }
+                  return const SizedBox.shrink();
+                }).toList();
+              }(),
+            ],
+          ),
+        ),
+        if (variables.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Parametros',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          ...variables.map((v) {
+            final key = '${v['componentType']}:${v['name']}';
+            return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                    controller: _varCtrl[key],
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                        labelText: '{{${v['name']}}} (${v['componentType']})',
+                        labelStyle: const TextStyle(
+                            color: Colors.white54, fontSize: 12),
+                        filled: true,
+                        fillColor: const Color(0xFF0D1117),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                const BorderSide(color: Colors.white12)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                const BorderSide(color: Colors.white12)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide:
+                                const BorderSide(color: Colors.blue)))));
+          })
+        ],
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: _isSending ? null : _send,
+            child: _isSending
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Text('Enviar Template'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ───────────────────── FOLLOW-UP SHEET ─────────────────────
+
+class _FollowUpSheet extends StatefulWidget {
+  final String ticketId;
+  final Map<String, dynamic>? initialFollowUp;
+  final String? fetchError;
+  final String token;
+  final String baseUrl;
+
+  const _FollowUpSheet({
+    required this.ticketId,
+    this.initialFollowUp,
+    this.fetchError,
+    required this.token,
+    required this.baseUrl,
+  });
+
+  @override
+  State<_FollowUpSheet> createState() => _FollowUpSheetState();
+}
+
+class _FollowUpSheetState extends State<_FollowUpSheet> {
+  Map<String, dynamic>? _followUp;
+  bool _showForm = false;
+  bool _isLoading = false;
+  String? _opError;
+  final _messageCtrl = TextEditingController();
+  DateTime? _scheduledDate;
+  TimeOfDay? _scheduledTime;
+
+  @override
+  void initState() {
+    super.initState();
+    _followUp = widget.initialFollowUp;
+    _showForm = true;
+  }
+
+  @override
+  void dispose() {
+    _messageCtrl.dispose();
+    super.dispose();
+  }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
+
+  String _formatDt(DateTime dt) {
+    final d = dt.toLocal();
+    return '${_pad(d.day)}/${_pad(d.month)}/${d.year} ${_pad(d.hour)}:${_pad(d.minute)}';
+  }
+
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Pendente';
+      case 'sent':
+        return 'Enviado';
+      case 'cancelled':
+        return 'Cancelado';
+      case 'failed':
+        return 'Falhou';
+      case 'paused':
+        return 'Pausado';
+      default:
+        return status;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.amber;
+      case 'sent':
+        return Colors.green;
+      case 'cancelled':
+        return Colors.grey;
+      case 'failed':
+        return Colors.redAccent;
+      case 'paused':
+        return Colors.orange;
+      default:
+        return Colors.white54;
+    }
+  }
+
+  Future<void> _pause() async {
+    final id = _s(_followUp?['id']);
+    if (id.isEmpty) return;
+    setState(() {
+      _isLoading = true;
+      _opError = null;
+    });
+    try {
+      final resp = await http.post(
+        Uri.parse(
+          '${widget.baseUrl}/api/tickets/${widget.ticketId}/followup/$id/pause',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = jsonDecode(resp.body);
+        final raw = decoded['followUp'];
+        if (raw is Map) {
+          setState(() => _followUp = Map<String, dynamic>.from(raw));
+        }
+      } else {
+        setState(() => _opError = 'Erro ao pausar (${resp.statusCode})');
+      }
+    } catch (e) {
+      setState(() => _opError = 'Erro de conexao');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _resume() async {
+    final id = _s(_followUp?['id']);
+    if (id.isEmpty) return;
+    setState(() {
+      _isLoading = true;
+      _opError = null;
+    });
+    try {
+      final resp = await http.post(
+        Uri.parse(
+          '${widget.baseUrl}/api/tickets/${widget.ticketId}/followup/$id/resume',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = jsonDecode(resp.body);
+        final raw = decoded['followUp'];
+        if (raw is Map) {
+          setState(() => _followUp = Map<String, dynamic>.from(raw));
+        }
+      } else {
+        setState(() => _opError = 'Erro ao retomar (${resp.statusCode})');
+      }
+    } catch (e) {
+      setState(() => _opError = 'Erro de conexao');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _cancel() async {
+    final id = _s(_followUp?['id']);
+    if (id.isEmpty) return;
+    setState(() {
+      _isLoading = true;
+      _opError = null;
+    });
+    try {
+      final resp = await http.delete(
+        Uri.parse(
+          '${widget.baseUrl}/api/tickets/${widget.ticketId}/followup/$id',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        setState(() {
+          _followUp = null;
+          _showForm = true;
+        });
+      } else {
+        setState(() => _opError = 'Erro ao cancelar (${resp.statusCode})');
+      }
+    } catch (e) {
+      setState(() => _opError = 'Erro de conexao');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _create() async {
+    final message = _messageCtrl.text.trim();
+    if (message.isEmpty) {
+      setState(() => _opError = 'Informe a mensagem do follow-up.');
+      return;
+    }
+    if (_scheduledDate == null || _scheduledTime == null) {
+      setState(() => _opError = 'Informe a data e hora.');
+      return;
+    }
+    final scheduled = DateTime(
+      _scheduledDate!.year,
+      _scheduledDate!.month,
+      _scheduledDate!.day,
+      _scheduledTime!.hour,
+      _scheduledTime!.minute,
+    );
+    if (scheduled.isBefore(DateTime.now())) {
+      setState(() => _opError = 'A data deve ser no futuro.');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _opError = null;
+    });
+    try {
+      final resp = await http.post(
+        Uri.parse(
+          '${widget.baseUrl}/api/tickets/${widget.ticketId}/followup',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+        body: jsonEncode({
+          'message': message,
+          'scheduledFor': scheduled.toUtc().toIso8601String(),
+          'type': 'followup',
+        }),
+      );
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final decoded = jsonDecode(resp.body);
+        final rawFu = decoded['followUp'] ?? decoded;
+        if (rawFu is Map) {
+          setState(() {
+            _followUp = Map<String, dynamic>.from(rawFu);
+            _showForm = false;
+            _messageCtrl.clear();
+            _scheduledDate = null;
+            _scheduledTime = null;
+          });
+        } else {
+          if (mounted) Navigator.pop(context);
+        }
+      } else {
+        final decoded = jsonDecode(resp.body);
+        final errMsg = _s(decoded['error']).isNotEmpty
+            ? _s(decoded['error'])
+            : 'Erro ao criar follow-up (${resp.statusCode})';
+        setState(() => _opError = errMsg);
+      }
+    } catch (e) {
+      setState(() => _opError = 'Erro de conexao');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _scheduledDate ?? now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null && mounted) setState(() => _scheduledDate = picked);
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _scheduledTime ??
+          TimeOfDay.fromDateTime(
+            DateTime.now().add(const Duration(hours: 1)),
+          ),
+    );
+    if (picked != null && mounted) setState(() => _scheduledTime = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, controller) {
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.schedule_outlined,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Follow-up',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            Expanded(
+              child: ListView(
+                controller: controller,
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+                children: [
+                  if (widget.fetchError != null) _errorBox(widget.fetchError!),
+                  if (_opError != null) _errorBox(_opError!),
+                  if (_followUp != null) ...[_buildExistingCard(), const SizedBox(height: 16)],
+                  _buildNewForm(context),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _errorBox(String msg) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.redAccent.withOpacity(0.4)),
+      ),
+      child: Text(
+        msg,
+        style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+      ),
+    );
+  }
+
+  Widget _buildExistingCard() {
+    final fu = _followUp!;
+    final status = _s(fu['status']);
+    final message = _s(fu['message']);
+    final scheduledFor = _s(fu['scheduledFor']);
+    DateTime? scheduledDt;
+    if (scheduledFor.isNotEmpty) {
+      scheduledDt = DateTime.tryParse(scheduledFor)?.toLocal();
+    }
+    final canPause = status == 'pending';
+    final canResume = status == 'paused';
+    final canCancel = status == 'pending' || status == 'paused';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2733),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _statusColor(status).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border:
+                      Border.all(color: _statusColor(status).withOpacity(0.4)),
+                ),
+                child: Text(_statusLabel(status),
+                    style: TextStyle(
+                        color: _statusColor(status),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
+              ),
+              if (scheduledDt != null) ...[
+                const SizedBox(width: 8),
+                Text(_formatDt(scheduledDt),
+                    style: const TextStyle(color: Colors.white54, fontSize: 11))
+              ],
+            ],
+          ),
+          if (message.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(message,
+                style: const TextStyle(color: Colors.white70, fontSize: 13))
+          ],
+          if (canPause || canResume || canCancel) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (canPause)
+                  _actionBtn(
+                      label: 'Pausar',
+                      icon: Icons.pause_outlined,
+                      color: Colors.orange,
+                      onPressed: _isLoading ? null : _pause),
+                if (canResume) ...[
+                  if (canPause) const SizedBox(width: 8),
+                  _actionBtn(
+                      label: 'Retomar',
+                      icon: Icons.play_arrow_outlined,
+                      color: Colors.green,
+                      onPressed: _isLoading ? null : _resume)
+                ],
+                if (canCancel) ...[
+                  const SizedBox(width: 8),
+                  _actionBtn(
+                      label: 'Cancelar',
+                      icon: Icons.close,
+                      color: Colors.redAccent,
+                      onPressed: _isLoading ? null : _cancel)
+                ],
+                if (_isLoading) ...[
+                  const SizedBox(width: 10),
+                  const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white54))
+                ],
+              ],
+            )
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14, color: color),
+      label: Text(label, style: TextStyle(color: color, fontSize: 12)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color.withOpacity(0.4)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _buildNewForm(BuildContext context) {
+    final dateLabel = _scheduledDate != null
+        ? '${_pad(_scheduledDate!.day)}/${_pad(_scheduledDate!.month)}/${_scheduledDate!.year}'
+        : 'Selecionar data';
+    final timeLabel = _scheduledTime != null
+        ? '${_pad(_scheduledTime!.hour)}:${_pad(_scheduledTime!.minute)}'
+        : 'Selecionar hora';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_followUp != null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text('Novo follow-up',
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ),
+        TextField(
+          controller: _messageCtrl,
+          maxLines: 3,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: 'Mensagem do follow-up...',
+            hintStyle: const TextStyle(color: Colors.white38),
+            filled: true,
+            fillColor: const Color(0xFF0D1117),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.white12)),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.white12)),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.blue)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickDate,
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: Text(dateLabel, style: const TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white12),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickTime,
+                icon: const Icon(Icons.access_time_outlined, size: 16),
+                label: Text(timeLabel, style: const TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white12),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12))),
+          onPressed: _isLoading ? null : _create,
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('Agendar Follow-up'),
+        ),
+      ],
     );
   }
 }

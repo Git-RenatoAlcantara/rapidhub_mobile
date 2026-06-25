@@ -26,7 +26,7 @@ class RapidhubApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rapidhub',
+      title: 'Hubi',
       debugShowCheckedModeBanner: false,
       // Usamos o tema escuro como padrão para combinar com o teu sistema web
       theme: ThemeData.dark().copyWith(
