@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'config.dart';
+import 'theme/app_theme.dart';
 
 String _s(dynamic v) => v?.toString() ?? '';
 
@@ -2282,7 +2283,7 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: isMe ? Colors.blue[800] : const Color(0xFF253140),
+            color: isMe ? AppColors.primaryDim : AppColors.surfaceAlt,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -2475,17 +2476,74 @@ class _ChatScreenState extends State<ChatScreen> {
     final showLoadMoreIndicator = _isLoadingMoreMessages && _hasMoreMessages;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1117),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(chatName, style: const TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF161B22),
-        iconTheme: const IconThemeData(color: Colors.white),
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            Stack(
+              children: [
+                const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: AppColors.surfaceAlt,
+                  child: Icon(Icons.person,
+                      color: AppColors.textSecondary, size: 20),
+                ),
+                if (_isOpenConversation)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: AppColors.background, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(chatName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600)),
+                  Text(
+                    _isPendingConversation
+                        ? 'Atendimento por IA'
+                        : (_isOpenConversation ? 'online agora' : 'arquivada'),
+                    style: TextStyle(
+                        color: _isPendingConversation
+                            ? AppColors.ai
+                            : (_isOpenConversation
+                                ? AppColors.success
+                                : AppColors.textSecondary),
+                        fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.background,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         elevation: 0,
         actions: [
           if (_isOpenConversation)
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              color: const Color(0xFF1E2733),
+              icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
+              color: AppColors.surfaceAlt,
               onSelected: (value) {
                 if (value == 'template') _showSendTemplateSheet();
                 if (value == 'followup') _showFollowUpSheet();
@@ -2551,8 +2609,11 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-            color: const Color(0xFF11161E),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -2611,7 +2672,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.blue),
+                    child: CircularProgressIndicator(color: AppColors.primary),
                   )
                 : timelineItems.isEmpty
                     ? const Center(
@@ -2677,14 +2738,17 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: isMe
-                                    ? Colors.blue[700]
-                                    : const Color(0xFF1E2733),
+                                    ? AppColors.primary
+                                    : AppColors.surface,
                                 borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(12),
-                                  topRight: const Radius.circular(12),
-                                  bottomLeft: Radius.circular(isMe ? 12 : 0),
-                                  bottomRight: Radius.circular(isMe ? 0 : 12),
+                                  topLeft: const Radius.circular(16),
+                                  topRight: const Radius.circular(16),
+                                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                                  bottomRight: Radius.circular(isMe ? 4 : 16),
                                 ),
+                                border: isMe
+                                    ? null
+                                    : Border.all(color: AppColors.border),
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -2720,34 +2784,47 @@ class _ChatScreenState extends State<ChatScreen> {
           // ── INPUT BAR ──
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            color: const Color(0xFF161B22),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
             child: SafeArea(
               child: _isPendingConversation
                   ? Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E2733),
+                        color: AppColors.ai.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white12),
+                        border: Border.all(
+                            color: AppColors.ai.withValues(alpha: 0.4)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Conversa em atendimento por IA.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
+                          const Row(
+                            children: [
+                              Icon(Icons.auto_awesome,
+                                  color: AppColors.ai, size: 16),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Conversa em atendimento por IA.',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
@@ -2810,7 +2887,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.attach_file,
-                                  color: Colors.white70),
+                                  color: AppColors.textSecondary),
                               onPressed: _isSendingMedia
                                   ? null
                                   : _showAttachmentOptions,
@@ -2818,13 +2895,24 @@ class _ChatScreenState extends State<ChatScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _messageController,
-                                style: const TextStyle(color: Colors.white),
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary),
                                 decoration: InputDecoration(
-                                  hintText: 'Escreve uma mensagem...',
-                                  hintStyle:
-                                      const TextStyle(color: Colors.grey),
+                                  hintText: 'Mensagem...',
+                                  hintStyle: const TextStyle(
+                                      color: AppColors.textSecondary),
                                   filled: true,
-                                  fillColor: const Color(0xFF0D1117),
+                                  fillColor: AppColors.background,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                    borderSide: const BorderSide(
+                                        color: AppColors.borderStrong),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(24),
+                                    borderSide: const BorderSide(
+                                        color: AppColors.primary, width: 1.5),
+                                  ),
                                   border: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(24),
                                     borderSide: BorderSide.none,
@@ -2837,9 +2925,9 @@ class _ChatScreenState extends State<ChatScreen> {
                                 onSubmitted: (_) => _sendMessage(),
                               ),
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 6),
                             CircleAvatar(
-                              backgroundColor: Colors.blue,
+                              backgroundColor: AppColors.primary,
                               child: IconButton(
                                 icon: const Icon(Icons.mic,
                                     color: Colors.white, size: 20),
@@ -2849,7 +2937,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             const SizedBox(width: 4),
                             CircleAvatar(
-                              backgroundColor: Colors.blue,
+                              backgroundColor: AppColors.primary,
                               child: IconButton(
                                 icon: const Icon(Icons.send,
                                     color: Colors.white, size: 20),

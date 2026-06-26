@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#732cbf</color>
+    <!-- Fundo da marca (mesma cor do tema do app) para a splash nativa,
+         evitando o flash branco antes do video da SplashScreen. -->
+    <color name="splash_background">#FF0D1117</color>
 </resources>

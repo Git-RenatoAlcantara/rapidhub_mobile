@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RapidHub - Seleção de Organização</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-secondary-fixed": "#460094",
+                    "on-background": "#f1f3fc",
+                    "surface-container-low": "#0f141a",
+                    "surface-tint": "#83aeff",
+                    "on-tertiary-container": "#005f2f",
+                    "secondary-dim": "#b387ff",
+                    "tertiary-dim": "#5bef90",
+                    "primary-container": "#6ba0ff",
+                    "on-error": "#490006",
+                    "on-primary-fixed": "#000000",
+                    "on-primary-fixed-variant": "#002a60",
+                    "tertiary": "#c3ffcd",
+                    "secondary-fixed-dim": "#d2b7ff",
+                    "primary-dim": "#0d71e6",
+                    "error-dim": "#d7383b",
+                    "on-surface": "#f1f3fc",
+                    "on-tertiary": "#006834",
+                    "on-secondary-container": "#ddc6ff",
+                    "on-primary": "#002d64",
+                    "surface-container": "#151a21",
+                    "surface-bright": "#262c36",
+                    "surface-container-lowest": "#000000",
+                    "secondary-container": "#5a21ab",
+                    "on-tertiary-fixed": "#004a23",
+                    "tertiary-fixed": "#6bfe9c",
+                    "surface": "#0a0e14",
+                    "secondary": "#b387ff",
+                    "on-surface-variant": "#a8abb3",
+                    "background": "#0a0e14",
+                    "tertiary-container": "#6bfe9c",
+                    "primary": "#83aeff",
+                    "primary-fixed-dim": "#4f91ff",
+                    "on-secondary-fixed-variant": "#652fb6",
+                    "tertiary-fixed-dim": "#5bef90",
+                    "surface-container-high": "#1b2028",
+                    "on-secondary": "#2d0063",
+                    "inverse-primary": "#005cc0",
+                    "surface-variant": "#20262f",
+                    "on-tertiary-fixed-variant": "#006a35",
+                    "error": "#ff716c",
+                    "inverse-on-surface": "#51555c",
+                    "outline-variant": "#44484f",
+                    "surface-dim": "#0a0e14",
+                    "secondary-fixed": "#dec8ff",
+                    "on-primary-container": "#00214e",
+                    "primary-fixed": "#6ba0ff",
+                    "on-error-container": "#ffa8a3",
+                    "outline": "#72757d",
+                    "surface-container-highest": "#20262f",
+                    "error-container": "#9f0519",
+                    "inverse-surface": "#f8f9ff",
+                    "brand-blue": "#2F81F7",
+                    "brand-purple": "#A371F7",
+                    "brand-green": "#2ECC71",
+                    "brand-border": "#30363D"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "2xl": "1rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "margin-page": "1.25rem",
+                    "item-gap": "0.75rem",
+                    "section-padding": "1.5rem",
+                    "gutter-chat": "1rem"
+            },
+            "fontFamily": {
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "body-lg": ["Inter"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "label-sm": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #0D1117;
+            font-family: 'Inter', sans-serif;
+            color: #f1f3fc;
+        }
+        .font-plus-jakarta {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0D1117;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #30363D;
+            border-radius: 10px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="min-h-screen flex flex-col max-w-md mx-auto relative overflow-hidden">
+<!-- Top Bar Component -->
+<header class="w-full top-0 sticky z-40 bg-background/80 backdrop-blur-md flex justify-between items-center px-margin-page py-4 border-b border-outline-variant">
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 rounded-full overflow-hidden ring-2 ring-brand-blue/20">
+<img class="w-full h-full object-cover" data-alt="Close-up professional portrait of Humberto Anelli, a Brazilian male customer service manager with short dark hair and a confident expression. He is wearing a modern tech-casual shirt. The background is a soft-focus corporate office with cool blue and dark grey tones matching the RapidHub brand identity. High-quality professional lighting with subtle highlights on his face." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOdKhwzhHV3rz3nassWJxAsZl21LohfPTe5tjMm_0sGs9ZvjLKofEuwqrHOX0z9_s1nf5-kk3-Gu1P_SR12DLcO-Rk2HIdaMImdiEcMrEGuHBIq-x5cZCSh5iPWjASxSHLFDwkjZLg2VgmoTX_8vWSnmyuJ1nfVcjvxac2OLTwL3xztCWaNmgYgCyMlZPFnSDmjq1c2u4p2_9qlO-CrJeW6DG0ZhONLYxh_kAboHEKHkaaXuW214CjryNsrOsZk6hl_xFliE1giwE"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-md text-[14px] leading-tight text-on-background">Humberto Anelli</span>
+<span class="text-label-sm text-on-surface-variant">humberto@empresa.com</span>
+</div>
+</div>
+<button class="p-2 rounded-full hover:bg-surface-variant transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">logout</span>
+</button>
+</header>
+<main class="flex-1 px-margin-page py-6 overflow-y-auto custom-scrollbar pb-32">
+<!-- Header Text -->
+<section class="mb-8">
+<h1 class="font-headline-lg text-white mb-2">Selecione uma organização</h1>
+<p class="font-body-md text-on-surface-variant">Escolha o workspace para continuar o atendimento</p>
+</section>
+<!-- Search Bar -->
+<div class="relative mb-8">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full bg-surface-container border border-brand-border rounded-2xl py-4 pl-12 pr-4 text-on-background placeholder:text-on-surface-variant focus:border-brand-blue focus:ring-1 focus:ring-brand-blue outline-none transition-all" placeholder="Buscar organização..." type="text"/>
+</div>
+<!-- Organization List -->
+<div class="space-y-4">
+<!-- Card 1: Selected -->
+<div class="bg-surface-container border-2 border-brand-blue rounded-2xl p-5 flex items-start gap-4 cursor-pointer relative group transition-all transform active:scale-[0.98]">
+<div class="w-12 h-12 bg-brand-blue/10 rounded-xl flex items-center justify-center text-brand-blue font-bold text-xl font-plus-jakarta">S</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<h3 class="font-headline-md text-[16px] text-white">Suporte Brasil</h3>
+<span class="bg-brand-green/10 text-brand-green text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Ativo</span>
+</div>
+<p class="text-label-sm text-on-surface-variant mb-3">12 conexões · 8 agentes online</p>
+<div class="flex -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a customer support agent, female with glasses, smiling softly, vibrant professional lighting, dark grey background consistent with Github aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAEvEw1aq2mhCPR-3Ageff0ZVfDGLhFIuBfTQGXOEGScP6uCZ18TXcUCXVeQIvDorrFBYTzgfDh_DeWsGRXod47qc-O6L_FhLrpGIvDMYyfqk_UcRg3Dq7KA8iviS8J0z93Wvql8NyDFbUG7sVZAqli8pwIJhKTj9tIXs-kLy2npuJ2uGylyxtx6TXp0JzOZmWZdxsMRLVCP3Gql-5MVVwSfpoWbAiZa79_tgEp7FWfQqWo16-gDRFqXO9pMtDSAo3RuyiwJdD434"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a young male customer support agent, friendly look, professional corporate portraiture, dark blue studio lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB-YecDqrVNhC6gGkUjxcpaU8EVWEt_O2pMBOzs96ftypXXn-mcj7N1mZrTBYNZux0V5_SxSF_pBgYXwKearaN7BHLTKvUV-9dVJU4dfnsjyrbf2jYKmLG0hn1Zw_g5sSki-kVJViTfMEvD-6Kdw3j05EzPix1VL3Qxm1ESBmTmE8R0zbNsp-HILmrdl3GMSVEVGROc_iRxxBs9Y0wRLrV4nEzcDFGepeoYW2wUBnV5ZvKmxkb3BdNO8g8eXWp3GX1atBoNUp_qtdI"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a professional support specialist, mature male with a beard, friendly expression, high resolution tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRsYx43UayERCqSqg9qQRKcheegueKjNKvpglfVfwuKVQY13fkCjA3AOJGmEaZN5L5TRdVC2U2uwfJNfnPbU5_wUtLuCQbjuyJDqiZAmlCC5wEqfxr5KSPIgIJfJSeKEz4RA7SWX8TRMB-pFPu_ZfrCDldVJUo-Rj33wedEvfey5Qtm-VK1Vau0Qu5lGSlBCt1IO3FyeHb3_NnQsGIL2g-OYrAI4KfDATnRKzD80WyIrw8ciuRB__zceHowuht6uPY3MIX4UPIatw"/>
+<div class="w-6 h-6 rounded-full border-2 border-surface-container bg-surface-container-high flex items-center justify-center text-[8px] text-white font-bold">+5</div>
+</div>
+</div>
+<div class="absolute top-5 right-5 w-6 h-6 bg-brand-blue rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px] text-on-primary-container font-bold">check</span>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container border border-brand-border rounded-2xl p-5 flex items-start gap-4 cursor-pointer hover:border-on-surface-variant/30 transition-all transform active:scale-[0.98]">
+<div class="w-12 h-12 bg-on-surface-variant/10 rounded-xl flex items-center justify-center text-white font-bold text-xl font-plus-jakarta">V</div>
+<div class="flex-1">
+<h3 class="font-headline-md text-[16px] text-white mb-1">Vendas Premium</h3>
+<p class="text-label-sm text-on-surface-variant mb-3">5 conexões · 3 agentes online</p>
+<div class="flex -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a female sales representative, looking directly at camera, professional tech-style portrait, cool lighting, corporate modern vibes." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDuz6Di9lgguVhpH1mAOSbenhc16sLS7teHvoBITfio0nwItdLWCMx0KYC9kxYSG3vkj3XRv0GwRogcNUpX8qmBeJ5Cf0onJyeRoJV5E75QXFL4fw9_8KbWclwzsZSFnRCDZiyMqWpqvlO8PvEWCEZfA63wXMFBLD-1iuiBosJVg8MqCAyvv6-9idKQdpJD6COG1L0WfI9252xiiwtfgVK0FQDfStmNdQKkdAFjWssKLRz5Re3EginlQxUUCQ-_e5Xuy7wZMfDFBCo"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a male sales lead, smiling, professional appearance, minimalist office background, high quality photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD7GcU6GVdTaTIXnvkvXs9P1Rue9dxIj7w3qZc1lOQxj7Lvgc_1KIqDUt1Y1DClUT2SgqNKR2uPdRSXvTOIVRwAHNirfXVqxvqjfqU8G8P1QHRYjUlGBdMKpFE55RUK8xe3fLtr3PHzTD1gQc8wdbvrwv5qjHjUuhV219L1Q2JuRIk1u9IbOApXIiqm5GngmDe_toR-1-JPOTDTz0qH6GKthF6Po5Z8ZzCiTxEGa_VZlBk6gWX5A7iariEBwQbah-FdHsjJi6L5yV8"/>
+<div class="w-6 h-6 rounded-full border-2 border-surface-container bg-surface-container-high flex items-center justify-center text-[8px] text-white font-bold">+1</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant mt-3">chevron_right</span>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface-container border border-brand-border rounded-2xl p-5 flex items-start gap-4 cursor-pointer hover:border-on-surface-variant/30 transition-all transform active:scale-[0.98]">
+<div class="w-12 h-12 bg-brand-purple/10 rounded-xl flex items-center justify-center text-brand-purple font-bold text-xl font-plus-jakarta">T</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<h3 class="font-headline-md text-[16px] text-white">TechCorp Suporte</h3>
+<span class="bg-brand-purple/10 text-brand-purple text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Admin</span>
+</div>
+<p class="text-label-sm text-on-surface-variant mb-3">20 conexões · 15 agentes online</p>
+<div class="flex -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a senior developer, dark clothing, serious but approachable expression, technological office background with blue light accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCCyDiWc6sGxcftWnPRRxkqsmD2VrA812gZ8xcaglf3MkFOWA8yHuc6DKZ6Aam772gUBVH_4pDqa-j_-LbfwFT67Kh4sPf6TLCUGjNU7l7n5BQgOV_4bSuFMGkS4PJwDiH6hvK2BWnflcMFOJoIDdNwHDMfZ7nva5_6m0E9TC-fOmWFScAF-a0MsL6gDL1O7pkxmRpqNDSvqbB56fx0ApFfvixWZm7uEqQiUrbmb-1UowqniaRaA_t8lJP7R_jPdPg3ETjD8ve7dDI"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a technical support lead, female, professional corporate portrait, high contrast dark lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA_6PrAoMZwXYPF-OnPUrUGf96UkH0QhIXAvlCSbzQv4JiUJqZg03KGFaXykOZy3K9sa-N-k2H5EMESx-Pvia8W2uaNx84ld5BiZ_ME_ZEh2I2ItIoDHLgryXV1DfHQ2o_xju3tcuADerNcUm_mVqXPUt797oomQ0hg_AXshnku1eWF0Gn_ujW_OVBP3_V2cYWnhCCVu2fUFouhaiDghHSfpcJDVj5ECeKtfCluYUKBHqycr8VpxrEHG-mbOnavgpR2QyMay4GV1_c"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a support engineer, diverse appearance, friendly expression, cinematic lighting in a tech workspace." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqmowfM7NH1EXbM-qXSJ8l0bRxPnaiL3o5BtfD-j3rAc5Le12XF94XvUtjE2mwgCzv891rUnxf9BO5yb_mu0FTTot1a6zC7zd1RoglJz6pE8mATsWr005JQ-DiB10dYLMVVqcBrWZcnPvOsEzHdJCmT4HhdCKCRJBgveveBUqdxh0Xw4q1E1fGJk46Hr5nBdj0sduXxQivt9w9ai78661RhvXr5ktTh9_AOFEhpUkKh7fddWD-I9oSGwtm4McbJK1b89J5pGXI-b0"/>
+<div class="w-6 h-6 rounded-full border-2 border-surface-container bg-surface-container-high flex items-center justify-center text-[8px] text-white font-bold">+12</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant mt-3">chevron_right</span>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface-container border border-brand-border rounded-2xl p-5 flex items-start gap-4 cursor-pointer hover:border-on-surface-variant/30 transition-all transform active:scale-[0.98]">
+<div class="w-12 h-12 bg-on-surface-variant/10 rounded-xl flex items-center justify-center text-white font-bold text-xl font-plus-jakarta">M</div>
+<div class="flex-1">
+<h3 class="font-headline-md text-[16px] text-white mb-1">Marketing Hub</h3>
+<p class="text-label-sm text-on-surface-variant mb-3">3 conexões · 2 agentes online</p>
+<div class="flex -space-x-2">
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a marketing specialist, energetic expression, professional creative studio lighting, soft color gradients." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCobW9QQhbdTUOMb1Xl1z6jyp4rkaI3DE-cOTkJG6nMi4w9ryFk0db3x0HYUVJlupDKxPJ5qCg3N8VXuqgqYZYMHOD_T8sdaqFKyUQDzTtkaHsxBdC3JPvgq3j9RNCQtmtZnAk-Jb8uf8w3nTgeZOLG5dZSbDOT-CRp6jxas5E64P55hY9Jg4iPeTMr8-SzHM0JyPU9mKWBFfLt_uZAEeGCEWKwLKalsiZZKA-T_IHN5ahUnBjUOS2GzJttkIqJdxCwa9dU2EsaC-4"/>
+<img class="w-6 h-6 rounded-full border-2 border-surface-container object-cover" data-alt="Small circular avatar of a creative designer, stylish appearance, high-key studio lighting with soft shadows, modern tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJ_UtRc6VL2DtNbB-O6ob5pIOfV04oRsLSSYRmPlWHF4mjgXRZZqrKzNYdDwxaFTE8BLe5LTHCLfQVoEFTwQyNO8_3ClxuDxcgrxAg52fhSNxmgp0L8syvq7XsqxmR2C2lrxQHZoQn4pCecSfs1z3DCetS7X6JsdpZbo2PvfVHKwy5JKxPULqVBtVbVgmrhEewmCgbDKWMb7dYUNnRwEIdpFjF2bNbxQZh8Sjo0ypJX04P7XHtbyyzIOJ0VkLEYjk9slZLtrakXSI"/>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant mt-3">chevron_right</span>
+</div>
+<!-- Action Card: Create New -->
+<div class="border-2 border-dashed border-brand-border rounded-2xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-surface-variant/30 hover:border-brand-blue/50 transition-all group active:scale-[0.98]">
+<div class="w-10 h-10 rounded-full bg-brand-border flex items-center justify-center group-hover:bg-brand-blue group-hover:text-white transition-colors">
+<span class="material-symbols-outlined">add</span>
+</div>
+<span class="text-label-sm text-on-surface-variant group-hover:text-white transition-colors">Criar nova organização</span>
+</div>
+</div>
+</main>
+<!-- Bottom Action Button -->
+<footer class="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-margin-page bg-gradient-to-t from-background via-background to-transparent pt-12 pb-8 z-50">
+<button class="w-full bg-brand-blue hover:bg-brand-blue/90 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-brand-blue/20 transition-all active:scale-95 group">
+<span class="font-headline-md text-[16px]">Continuar</span>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</footer>
+<script>
+        // Micro-interactions for organization selection
+        const cards = document.querySelectorAll('.bg-surface-container');
+        cards.forEach(card => {
+            card.addEventListener('click', function() {
+                // Ignore the "Create New" card for this simple toggle logic
+                if (this.classList.contains('border-dashed')) return;
+                
+                // Remove selected state from all
+                cards.forEach(c => {
+                    c.classList.remove('border-brand-blue', 'border-2');
+                    c.classList.add('border', 'border-brand-border');
+                    const check = c.querySelector('.bg-brand-blue.rounded-full');
+                    if (check) check.classList.add('hidden');
+                });
+
+                // Apply to current
+                this.classList.remove('border', 'border-brand-border');
+                this.classList.add('border-brand-blue', 'border-2');
+                const check = this.querySelector('.bg-brand-blue.rounded-full');
+                if (check) check.classList.remove('hidden');
+            });
+        });
+
+        // Initialize the first card as active if not already hardcoded for UI demo
+        // (Currently the first one is already hardcoded with active styles)
+    </script>
+</body></html>

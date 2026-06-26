@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'config.dart';
 import 'org_selection_screen.dart';
+import 'theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +21,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _storage = const FlutterSecureStorage();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _rememberMe = true;
   String _errorMessage = '';
 
   Future<void> _fazerLogin() async {
@@ -82,96 +85,355 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _showEmBreve(String label) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label estará disponível em breve.'),
+        backgroundColor: AppColors.surface,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1117),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+      backgroundColor: AppColors.background,
+      body: Stack(
+        children: [
+          // Brilho radial azul-roxo atrás do conteúdo, dando profundidade.
+          Positioned(
+            top: -120,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 360,
+              decoration: const BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.topCenter,
+                  radius: 0.9,
+                  colors: [
+                    Color(0x332F81F7),
+                    Color(0x1AA371F7),
+                    Colors.transparent,
+                  ],
+                  stops: [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildBranding(),
+                      const SizedBox(height: 32),
+                      _buildFormCard(),
+                      const SizedBox(height: 24),
+                      _buildFooter(),
+                      const SizedBox(height: 16),
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.lock_outline,
+                              size: 14, color: AppColors.textSecondary),
+                          SizedBox(width: 6),
+                          Text(
+                            'Conexão segura e criptografada',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBranding() {
+    return Column(
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            // Brilho suave atrás da logo, sem impor formato à imagem.
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.ai.withValues(alpha: 0.30),
+                blurRadius: 32,
+                spreadRadius: -4,
+              ),
+            ],
+          ),
+          child: Image.asset(
+            'assets/icon/logo.png',
+            width: 88,
+            height: 88,
+            fit: BoxFit.contain,
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'RapidHub',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Central de atendimento inteligente',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFormCard() {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.borderStrong),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFieldLabel('Email'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: AppTheme.inputDecoration(
+              hint: 'voce@empresa.com',
+              prefixIcon: Icons.mail_outline,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildFieldLabel('Senha'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: AppTheme.inputDecoration(
+              hint: '••••••••',
+              prefixIcon: Icons.lock_outline,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            onSubmitted: (_) => _fazerLogin(),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Image.asset(
-                'assets/icon/logo.png',
-                width: 100,
-                height: 100,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Hubi',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: const Color(0xFF161B22),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+              Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Checkbox(
+                      value: _rememberMe,
+                      onChanged: (v) =>
+                          setState(() => _rememberMe = v ?? false),
+                      activeColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.borderStrong),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6)),
+                    ),
                   ),
-                  prefixIcon: const Icon(Icons.email, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  const Text('Lembrar-me',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 13)),
+                ],
+              ),
+              TextButton(
+                onPressed: () => _showEmBreve('Recuperação de senha'),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Esqueceu a senha?',
+                    style: TextStyle(color: AppColors.primary, fontSize: 13)),
+              ),
+            ],
+          ),
+          if (_errorMessage.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border:
+                    Border.all(color: AppColors.danger.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline,
+                      color: AppColors.danger, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_errorMessage,
+                        style: const TextStyle(
+                            color: AppColors.danger, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _fazerLogin,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                disabledBackgroundColor:
+                    AppColors.primary.withValues(alpha: 0.5),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Entrar',
+                            style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildSeparator(),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _buildSocialButton(
+                  label: 'Google',
+                  icon: Icons.g_mobiledata,
+                  onTap: () => _showEmBreve('Login com Google'),
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Palavra-passe',
-                  labelStyle: const TextStyle(color: Colors.grey),
-                  filled: true,
-                  fillColor: const Color(0xFF161B22),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  prefixIcon: const Icon(Icons.lock, color: Colors.grey),
-                ),
-                onSubmitted: (_) => _fazerLogin(),
-              ),
-              const SizedBox(height: 24),
-              if (_errorMessage.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(_errorMessage,
-                      style: const TextStyle(color: Colors.redAccent)),
-                ),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _fazerLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text('Entrar',
-                          style: TextStyle(fontSize: 16, color: Colors.white)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSocialButton(
+                  label: 'Microsoft',
+                  icon: Icons.window,
+                  onTap: () => _showEmBreve('Login com Microsoft'),
                 ),
               ),
             ],
           ),
-        ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildFieldLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
+  Widget _buildSeparator() {
+    return const Row(
+      children: [
+        Expanded(child: Divider(color: AppColors.border)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: Text('ou continue com',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+        ),
+        Expanded(child: Divider(color: AppColors.border)),
+      ],
+    );
+  }
+
+  Widget _buildSocialButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, color: AppColors.textPrimary, size: 22),
+      label: Text(label,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        side: const BorderSide(color: AppColors.borderStrong),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text('Não tem conta?',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        TextButton(
+          onPressed: () => _showEmBreve('Contato com vendas'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            minimumSize: const Size(0, 0),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('Falar com vendas',
+              style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ),
+      ],
     );
   }
 }

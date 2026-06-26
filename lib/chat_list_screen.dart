@@ -11,6 +11,9 @@ import 'chat_screen.dart';
 import 'config.dart';
 import 'login_screen.dart';
 import 'org_selection_screen.dart';
+import 'theme/app_theme.dart';
+import 'widgets/app_bottom_nav.dart';
+import 'widgets/app_logo.dart';
 
 enum _ChatListTab {
   ai,
@@ -108,7 +111,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   final ScrollController _chatListScrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   StreamSubscription<dynamic>? _ticketsStreamSubscription;
+
+  String _quickSearch = '';
 
   List<Map<String, dynamic>> _chats = <Map<String, dynamic>>[];
   _ChatListTab _activeTab = _ChatListTab.ativos;
@@ -2139,11 +2145,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     required Color accentColor,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFF131C27),
+        color: accentColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accentColor.withOpacity(0.45)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2168,33 +2174,39 @@ class _ChatListScreenState extends State<ChatListScreen> {
     required int count,
     required bool active,
     required VoidCallback onTap,
+    IconData? icon,
+    Color accent = AppColors.primary,
   }) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(
-            minHeight: 40,
-            minWidth: 108,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
           decoration: BoxDecoration(
-            color: active ? Colors.blue : const Color(0xFF1E2733),
-            borderRadius: BorderRadius.circular(10),
+            color: active ? accent : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: active ? Colors.blueAccent : Colors.white12,
+              color: active ? accent : AppColors.border,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              if (icon != null) ...[
+                Icon(icon,
+                    size: 15,
+                    color: active ? Colors.white : accent),
+                const SizedBox(width: 6),
+              ],
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white,
+                  color: active ? Colors.white : AppColors.textPrimary,
                   fontSize: 13,
                   fontWeight: active ? FontWeight.bold : FontWeight.w600,
                 ),
@@ -2203,13 +2215,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: active ? Colors.white : Colors.white10,
+                  color: active
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : Colors.white.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   count.toString(),
                   style: TextStyle(
-                    color: active ? Colors.blue[800] : Colors.white70,
+                    color: active ? Colors.white : AppColors.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
@@ -2222,11 +2236,56 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
+  Widget _buildFilterButton(int appliedFiltersCount) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _openFiltersSheet,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderStrong),
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            const Icon(Icons.tune, color: AppColors.textPrimary, size: 20),
+            if (appliedFiltersCount > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    appliedFiltersCount.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _ticketsStreamSubscription?.cancel();
     _chatListScrollController.removeListener(_handleChatListScroll);
     _chatListScrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -2242,54 +2301,52 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final gruposCount = _resolveTabCount(_apiGruposCount, localGruposCount);
     final archivedCount =
         _resolveTabCount(_apiArquivadosCount, localArchivedCount);
-    final visibleChats = _visibleChats();
+    var visibleChats = _visibleChats();
+    if (_quickSearch.trim().isNotEmpty) {
+      final q = _quickSearch.trim().toLowerCase();
+      visibleChats = visibleChats
+          .where((c) =>
+              _asString(c['name']).toLowerCase().contains(q) ||
+              _asString(c['lastMessage']).toLowerCase().contains(q))
+          .toList();
+    }
     final appliedFiltersCount = _filters.appliedCount;
     final filterChips = _buildFilterChips();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1117),
+      backgroundColor: AppColors.background,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Nova conversa estará disponível em breve.'),
+              backgroundColor: AppColors.surface,
+            ),
+          );
+        },
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add_comment_outlined),
+      ),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 0),
       appBar: AppBar(
-        title:
-            const Text('Minhas Conversas', style: TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF161B22),
+        titleSpacing: 16,
+        title: const Row(
+          children: [
+            AppLogo(),
+            SizedBox(width: 10),
+            Text('RapidHub',
+                style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18)),
+          ],
+        ),
+        backgroundColor: AppColors.background,
         elevation: 0,
         actions: [
           IconButton(
-            tooltip: 'Filtrar Conversas',
-            onPressed: _openFiltersSheet,
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.filter_alt_outlined, color: Colors.white),
-                if (appliedFiltersCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: const BoxDecoration(
-                        color: Colors.blueAccent,
-                        shape: BoxShape.rectangle,
-                        borderRadius: BorderRadius.all(Radius.circular(999)),
-                      ),
-                      child: Text(
-                        appliedFiltersCount.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.swap_horiz, color: Colors.blue),
+            icon: const Icon(Icons.swap_horiz, color: AppColors.primary),
             tooltip: 'Trocar Organizacao',
             onPressed: () {
               Navigator.pushReplacement(
@@ -2353,8 +2410,46 @@ class _ChatListScreenState extends State<ChatListScreen> {
               : Column(
                   children: [
                     Container(
-                      color: const Color(0xFF161B22),
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                      color: AppColors.background,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (v) =>
+                                  setState(() => _quickSearch = v),
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 14),
+                              decoration: AppTheme.inputDecoration(
+                                hint: 'Buscar conversas, contatos...',
+                                prefixIcon: Icons.search,
+                                suffixIcon: _quickSearch.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close,
+                                            size: 18,
+                                            color: AppColors.textSecondary),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          setState(() => _quickSearch = '');
+                                        },
+                                      ),
+                              ).copyWith(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _buildFilterButton(appliedFiltersCount),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      color: AppColors.background,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
@@ -2362,6 +2457,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             _buildTab(
                               label: 'IA',
                               count: aiCount,
+                              icon: Icons.auto_awesome,
+                              accent: AppColors.ai,
                               active: _activeTab == _ChatListTab.ai,
                               onTap: () {
                                 setState(() => _activeTab = _ChatListTab.ai);
@@ -2370,14 +2467,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             _buildTab(
                               label: 'Ativos',
                               count: ativosCount,
+                              accent: AppColors.primary,
                               active: _activeTab == _ChatListTab.ativos,
                               onTap: () {
                                 setState(() => _activeTab = _ChatListTab.ativos);
                               },
                             ),
                             _buildTab(
-                              label: 'Departamento',
+                              label: 'Grupos',
                               count: gruposCount,
+                              icon: Icons.groups_outlined,
+                              accent: AppColors.success,
                               active: _activeTab == _ChatListTab.grupos,
                               onTap: () {
                                 setState(() => _activeTab = _ChatListTab.grupos);
@@ -2568,132 +2668,268 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     ? chat['avatar']
                                     : null;
 
-                                return ListTile(
-                                  isThreeLine: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 8,
-                                  ),
-                                  leading: CircleAvatar(
-                                    backgroundColor: Colors.blue[800],
-                                    backgroundImage: avatarUrl != null
-                                        ? NetworkImage(avatarUrl)
-                                        : null,
-                                    child: avatarUrl == null
-                                        ? const Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                          )
-                                        : null,
-                                  ),
-                                  title: Text(
-                                    nomeContato,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: unreadCount > 0
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
+                                final isAi = ticketStatus == 'pending';
+                                final isOnline = ticketStatus == 'open';
+
+                                return Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 0, 16, 10),
+                                  child: Material(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(14),
+                                      onTap: () async {
+                                        await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => ChatScreen(
+                                              chatId: chatId,
+                                              initialTicketStatus: ticketStatus,
+                                              initialChatName:
+                                                  _asString(chat['name']),
+                                              initialConnectionLabel:
+                                                  rawConnection,
+                                              initialContactTags: contactTags,
+                                            ),
+                                          ),
+                                        );
+                                        _carregarChats();
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          borderRadius:
+                                              BorderRadius.circular(14),
+                                          border: Border.all(
+                                            color: unreadCount > 0
+                                                ? AppColors.primary
+                                                    .withValues(alpha: 0.5)
+                                                : AppColors.border,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Stack(
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 24,
+                                                  backgroundColor:
+                                                      AppColors.surfaceAlt,
+                                                  backgroundImage:
+                                                      avatarUrl != null
+                                                          ? NetworkImage(
+                                                              avatarUrl)
+                                                          : null,
+                                                  child: avatarUrl == null
+                                                      ? const Icon(Icons.person,
+                                                          color: AppColors
+                                                              .textSecondary)
+                                                      : null,
+                                                ),
+                                                if (isOnline)
+                                                  Positioned(
+                                                    right: 0,
+                                                    bottom: 0,
+                                                    child: Container(
+                                                      width: 13,
+                                                      height: 13,
+                                                      decoration: BoxDecoration(
+                                                        color:
+                                                            AppColors.success,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(
+                                                            color: AppColors
+                                                                .surface,
+                                                            width: 2),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          nomeContato,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color: AppColors
+                                                                .textPrimary,
+                                                            fontSize: 15,
+                                                            fontWeight: unreadCount >
+                                                                    0
+                                                                ? FontWeight.bold
+                                                                : FontWeight
+                                                                    .w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Text(
+                                                        tempo,
+                                                        style: TextStyle(
+                                                          color: unreadCount > 0
+                                                              ? AppColors.primary
+                                                              : AppColors
+                                                                  .textSecondary,
+                                                          fontSize: 12,
+                                                          fontWeight: unreadCount >
+                                                                  0
+                                                              ? FontWeight.w600
+                                                              : FontWeight
+                                                                  .normal,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      if (isAi) ...[
+                                                        const Icon(
+                                                            Icons.auto_awesome,
+                                                            size: 13,
+                                                            color:
+                                                                AppColors.ai),
+                                                        const SizedBox(
+                                                            width: 4),
+                                                      ],
+                                                      Expanded(
+                                                        child: Text(
+                                                          ultimaMensagem,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color: isAi
+                                                                ? AppColors.ai
+                                                                : (unreadCount >
+                                                                        0
+                                                                    ? AppColors
+                                                                        .textPrimary
+                                                                    : AppColors
+                                                                        .textSecondary),
+                                                            fontSize: 13,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      if (unreadCount > 0) ...[
+                                                        const SizedBox(
+                                                            width: 8),
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                            horizontal: 7,
+                                                            vertical: 2,
+                                                          ),
+                                                          decoration:
+                                                              BoxDecoration(
+                                                            color: AppColors
+                                                                .primary,
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        999),
+                                                          ),
+                                                          child: Text(
+                                                            unreadCount
+                                                                .toString(),
+                                                            style:
+                                                                const TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                  if (connection.isNotEmpty ||
+                                                      agent.isNotEmpty ||
+                                                      department.isNotEmpty ||
+                                                      contactTags
+                                                          .isNotEmpty) ...[
+                                                    const SizedBox(height: 8),
+                                                    Wrap(
+                                                      spacing: 6,
+                                                      runSpacing: 4,
+                                                      children: [
+                                                        if (isAi)
+                                                          _buildChatBadge(
+                                                            icon: Icons
+                                                                .auto_awesome,
+                                                            text: 'IA',
+                                                            accentColor:
+                                                                AppColors.ai,
+                                                          ),
+                                                        if (department
+                                                            .isNotEmpty)
+                                                          _buildChatBadge(
+                                                            icon:
+                                                                Icons.apartment,
+                                                            text: department,
+                                                            accentColor:
+                                                                AppColors
+                                                                    .primary,
+                                                          ),
+                                                        if (agent.isNotEmpty)
+                                                          _buildChatBadge(
+                                                            icon: Icons.person,
+                                                            text: agent,
+                                                            accentColor:
+                                                                const Color(
+                                                                    0xFF93C5FD),
+                                                          ),
+                                                        if (connection
+                                                            .isNotEmpty)
+                                                          _buildChatBadge(
+                                                            icon: Icons
+                                                                .phone_enabled,
+                                                            text: connection,
+                                                            accentColor:
+                                                                AppColors
+                                                                    .success,
+                                                          ),
+                                                        ...contactTags
+                                                            .take(2)
+                                                            .map(
+                                                              (tag) =>
+                                                                  _buildChatBadge(
+                                                                icon: Icons
+                                                                    .local_offer,
+                                                                text: tag,
+                                                                accentColor:
+                                                                    const Color(
+                                                                        0xFFD8B4FE),
+                                                              ),
+                                                            ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  subtitle: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        ultimaMensagem,
-                                        style: TextStyle(
-                                          color: unreadCount > 0
-                                              ? Colors.white70
-                                              : Colors.grey,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 5),
-                                          Wrap(
-                                        spacing: 6,
-                                        runSpacing: 4,
-                                        children: [
-                                          if (connection.isNotEmpty)
-                                            _buildChatBadge(
-                                              icon: Icons.phone_enabled,
-                                              text: connection,
-                                              accentColor: Colors.tealAccent,
-                                            ),
-                                          if (agent.isNotEmpty)
-                                            _buildChatBadge(
-                                              icon: Icons.person,
-                                              text: agent,
-                                              accentColor:
-                                                  const Color(0xFF93C5FD),
-                                            ),
-                                          if (department.isNotEmpty)
-                                            _buildChatBadge(
-                                              icon: Icons.apartment,
-                                              text: department,
-                                              accentColor:
-                                                  const Color(0xFFFDE68A),
-                                            ),
-                                          ...contactTags.take(2).map(
-                                            (tag) => _buildChatBadge(
-                                              icon: Icons.local_offer,
-                                              text: tag,
-                                              accentColor:
-                                                  const Color(0xFFD8B4FE),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  trailing: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        tempo,
-                                        style: TextStyle(
-                                          color: unreadCount > 0
-                                              ? Colors.greenAccent
-                                              : Colors.grey,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      if (unreadCount > 0) ...[
-                                        const SizedBox(height: 4),
-                                        Container(
-                                          padding: const EdgeInsets.all(6),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.greenAccent,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Text(
-                                            unreadCount.toString(),
-                                            style: const TextStyle(
-                                              color: Colors.black,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                      ]
-                                    ],
-                                  ),
-                                  onTap: () async {
-                                    await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => ChatScreen(
-                                          chatId: chatId,
-                                          initialTicketStatus: ticketStatus,
-                                          initialChatName: _asString(chat['name']),
-                                          initialConnectionLabel: rawConnection,
-                                          initialContactTags: contactTags,
-                                        ),
-                                      ),
-                                    );
-                                    _carregarChats();
-                                  },
                                 );
                               },
                             ),

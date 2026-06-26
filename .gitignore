@@ -1,6 +1,9 @@
 .dart_tool/
 .packages
 build/
+
+# MCP local config (contém API keys — nunca commitar)
+.mcp.json
 .flutter-plugins
 .flutter-plugins-dependencies
 android/.gradle/
