@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'config.dart';
 import 'login_screen.dart';
 import 'org_selection_screen.dart';
+import 'store_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_bottom_nav.dart';
 import 'widgets/app_logo.dart';
@@ -197,6 +198,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: Icons.notifications_none,
             title: 'Notificações',
             onTap: _showEmBreve,
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Loja'),
+          _buildTile(
+            icon: Icons.storefront_outlined,
+            title: 'Configurações da Loja',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StoreScreen()),
+              );
+            },
           ),
           const SizedBox(height: 16),
           _sectionTitle('Preferências'),
