@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'config.dart';
+import 'connections/new_connection_screen.dart';
 import 'login_screen.dart';
 import 'org_selection_screen.dart';
 import 'store_screen.dart';
@@ -198,6 +199,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             icon: Icons.notifications_none,
             title: 'Notificações',
             onTap: _showEmBreve,
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Conexões'),
+          _buildTile(
+            icon: Icons.add_link,
+            title: 'Nova conexão (WhatsApp)',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const NewConnectionScreen()),
+              );
+            },
           ),
           const SizedBox(height: 16),
           _sectionTitle('Loja'),
