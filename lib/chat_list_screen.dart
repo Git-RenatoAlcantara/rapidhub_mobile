@@ -1203,18 +1203,35 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
 
     if (missingDetailsFor.isNotEmpty) {
-      final responses = await Future.wait(
-        missingDetailsFor.map(
-          (chatId) => http.get(
-            Uri.parse('$baseUrl/api/chats/$chatId'),
-            headers: headers,
-          ),
-        ),
-      );
+      // Busca os detalhes em lotes para não abrir dezenas de conexões HTTP de
+      // uma só vez. Cada requisição é isolada: uma falha de rede vira `null` e
+      // não derruba as demais (um `Future.wait` cru rejeitaria tudo se uma
+      // única `http.get` lançasse exceção). A ordem é preservada para manter o
+      // alinhamento com `missingDetailsFor[i]` no loop abaixo.
+      const batchSize = 6;
+      final responses = <http.Response?>[];
+      for (var start = 0;
+          start < missingDetailsFor.length;
+          start += batchSize) {
+        final batch = missingDetailsFor.skip(start).take(batchSize);
+        final batchResponses = await Future.wait(
+          batch.map((chatId) async {
+            try {
+              return await http.get(
+                Uri.parse('$baseUrl/api/chats/$chatId'),
+                headers: headers,
+              );
+            } catch (_) {
+              return null;
+            }
+          }),
+        );
+        responses.addAll(batchResponses);
+      }
 
       for (var i = 0; i < responses.length; i++) {
         final resp = responses[i];
-        if (resp.statusCode != 200) {
+        if (resp == null || resp.statusCode != 200) {
           continue;
         }
         try {
