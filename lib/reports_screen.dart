@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'theme/app_theme.dart';
-import 'widgets/app_bottom_nav.dart';
 import 'widgets/app_logo.dart';
 
 class ReportsScreen extends StatelessWidget {
@@ -27,7 +26,7 @@ class ReportsScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 2),
+
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [

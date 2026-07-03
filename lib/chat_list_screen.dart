@@ -2345,7 +2345,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.add_comment_outlined),
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 0),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 2),
       appBar: AppBar(
         titleSpacing: 16,
         title: const Row(

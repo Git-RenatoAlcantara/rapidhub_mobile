@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../cardapio_screen.dart';
+import '../pedidos_screen.dart';
 import '../chat_list_screen.dart';
-import '../contacts_screen.dart';
-import '../reports_screen.dart';
 import '../profile_screen.dart';
+import '../configuracoes_screen.dart';
 import '../theme/app_theme.dart';
 
-/// Barra de navegação inferior compartilhada entre as abas principais.
-///
-/// Cada tela passa o seu [currentIndex]. Tocar numa aba diferente troca de
-/// tela com `pushReplacement` (sem animação) para dar a sensação de abas.
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key, required this.currentIndex});
 
@@ -21,15 +18,18 @@ class AppBottomNav extends StatelessWidget {
     Widget target;
     switch (index) {
       case 0:
-        target = const ChatListScreen();
+        target = const CardapioScreen();
         break;
       case 1:
-        target = const ContactsScreen();
+        target = const PedidosScreen();
         break;
       case 2:
-        target = const ReportsScreen();
+        target = const ChatListScreen();
         break;
       case 3:
+        target = const ConfiguracoesScreen();
+        break;
+      case 4:
         target = const ProfileScreen();
         break;
       default:
@@ -82,10 +82,11 @@ class AppBottomNav extends StatelessWidget {
         top: false,
         child: Row(
           children: [
-            item(0, Icons.chat_bubble_outline, 'Conversas'),
-            item(1, Icons.people_outline, 'Contatos'),
-            item(2, Icons.bar_chart_outlined, 'Relatórios'),
-            item(3, Icons.person_outline, 'Perfil'),
+            item(0, Icons.restaurant_menu_outlined, 'Cardápio'),
+            item(1, Icons.receipt_long_outlined, 'Pedidos'),
+            item(2, Icons.chat_bubble_outline, 'Conversas'),
+            item(3, Icons.settings_outlined, 'Configurações'),
+            item(4, Icons.person_outline, 'Perfil'),
           ],
         ),
       ),

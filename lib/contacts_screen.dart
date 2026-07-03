@@ -5,7 +5,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'config.dart';
 import 'theme/app_theme.dart';
-import 'widgets/app_bottom_nav.dart';
 import 'widgets/app_logo.dart';
 
 class ContactsScreen extends StatefulWidget {
@@ -154,7 +153,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         foregroundColor: Colors.white,
         child: const Icon(Icons.person_add),
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 1),
+
       body: Column(
         children: [
           Padding(

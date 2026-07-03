@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const AppBottomNav(currentIndex: 3),
+      bottomNavigationBar: const AppBottomNav(currentIndex: 4),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
