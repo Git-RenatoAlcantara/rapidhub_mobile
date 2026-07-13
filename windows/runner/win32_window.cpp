@@ -31,6 +31,11 @@ static int g_active_window_count = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
 
+// Tamanho mínimo lógico da janela (pixels a 96 DPI). Abaixo disso a sidebar do
+// layout desktop e o conteúdo deixam de caber lado a lado.
+constexpr int kMinWindowWidth = 900;
+constexpr int kMinWindowHeight = 600;
+
 // Scale helper to convert logical scaler values to physical using passed in
 // scale factor
 int Scale(int source, double scale_factor) {
@@ -134,10 +139,23 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
+  const int width = Scale(size.width, scale_factor);
+  const int height = Scale(size.height, scale_factor);
+
+  // Abre centralizada na área de trabalho do monitor (já descontada a barra de
+  // tarefas). |origin| vira apenas o fallback, caso o monitor não responda.
+  int x = Scale(origin.x, scale_factor);
+  int y = Scale(origin.y, scale_factor);
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(MONITORINFO);
+  if (GetMonitorInfo(monitor, &monitor_info)) {
+    const RECT& work_area = monitor_info.rcWork;
+    x = work_area.left + ((work_area.right - work_area.left) - width) / 2;
+    y = work_area.top + ((work_area.bottom - work_area.top) - height) / 2;
+  }
+
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-      Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
-      Scale(size.width, scale_factor), Scale(size.height, scale_factor),
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW, x, y, width, height,
       nullptr, nullptr, GetModuleHandle(nullptr), this);
 
   if (!window) {
@@ -186,6 +204,15 @@ Win32Window::MessageHandler(HWND hwnd,
         PostQuitMessage(0);
       }
       return 0;
+
+    // Impede encolher a janela até um tamanho onde o layout desktop quebra.
+    case WM_GETMINMAXINFO: {
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      double scale_factor = GetDpiForWindow(hwnd) / 96.0;
+      info->ptMinTrackSize.x = Scale(kMinWindowWidth, scale_factor);
+      info->ptMinTrackSize.y = Scale(kMinWindowHeight, scale_factor);
+      return 0;
+    }
 
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT*>(lparam);

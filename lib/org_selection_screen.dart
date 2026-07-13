@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'chat_list_screen.dart';
 import 'login_screen.dart';
 import 'config.dart';
 import 'theme/app_theme.dart';
+import 'widgets/home_shell.dart';
 
 class OrgSelectionScreen extends StatefulWidget {
   const OrgSelectionScreen({super.key});
@@ -106,7 +106,7 @@ class _OrgSelectionScreenState extends State<OrgSelectionScreen> {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const ChatListScreen()),
+          MaterialPageRoute(builder: (context) => const HomeShell()),
         );
       } else {
         setState(() {

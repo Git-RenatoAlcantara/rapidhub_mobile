@@ -6,6 +6,7 @@ import 'config.dart';
 import 'connections/new_connection_screen.dart';
 import 'login_screen.dart';
 import 'org_selection_screen.dart';
+import 'store_dashboard_screen.dart';
 import 'store_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_bottom_nav.dart';
@@ -215,6 +216,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 16),
           _sectionTitle('Loja'),
+          _buildTile(
+            icon: Icons.insights_outlined,
+            title: 'Painel da Loja',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const StoreDashboardScreen()),
+              );
+            },
+          ),
           _buildTile(
             icon: Icons.storefront_outlined,
             title: 'Configurações da Loja',

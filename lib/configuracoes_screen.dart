@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'printing/printer_settings_screen.dart';
 import 'settings/settings_api.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_bottom_nav.dart';
@@ -304,6 +305,20 @@ class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
                       color: AppColors.textSecondary, fontSize: 12),
                 ),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _sectionTitle('Impressão'),
+        _card(
+          child: _tapRow(
+            icon: Icons.print_outlined,
+            title: 'Impressora térmica',
+            trailing: 'Configurar',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const PrinterSettingsScreen(),
+              ),
             ),
           ),
         ),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'menu/categories_screen.dart';
 import 'menu/menu_api.dart';
+import 'menu/menus_screen.dart';
+import 'menu/product_editor_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_bottom_nav.dart';
 
@@ -24,6 +27,11 @@ class _CardapioScreenState extends State<CardapioScreen> {
 
   List<MenuCategory> _categories = const [];
   List<MenuProduct> _products = const [];
+  List<Menu> _menus = const [];
+
+  /// Ids dos produtos vendáveis hoje, segundo o próprio servidor
+  /// (`/api/menu/today`) — já considera exceções por data e dias da semana.
+  Set<String> _availableToday = const {};
 
   /// `null` = categoria "Todos".
   String? _selectedCategoryId;
@@ -50,11 +58,15 @@ class _CardapioScreenState extends State<CardapioScreen> {
       final results = await Future.wait([
         _api.fetchCategories(),
         _api.fetchProducts(),
+        _api.fetchMenus(),
+        _api.fetchAvailableTodayIds(),
       ]);
       if (!mounted) return;
       setState(() {
         _categories = results[0] as List<MenuCategory>;
         _products = results[1] as List<MenuProduct>;
+        _menus = results[2] as List<Menu>;
+        _availableToday = results[3] as Set<String>;
         _loading = false;
       });
     } on MenuModuleDisabled {
@@ -70,6 +82,40 @@ class _CardapioScreenState extends State<CardapioScreen> {
         _loading = false;
       });
     }
+  }
+
+  /// Abre o editor e recarrega tudo se algo foi salvo. Recarregar é
+  /// obrigatório: a resposta do PUT de produto não traz os grupos de opções.
+  Future<void> _openProduct([MenuProduct? product]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ProductEditorScreen(
+          api: _api,
+          categories: _categories,
+          menus: _menus,
+          product: product,
+        ),
+      ),
+    );
+    if (saved == true) await _load();
+  }
+
+  Future<void> _openCategories() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => CategoriesScreen(api: _api)),
+    );
+    if (changed == true) {
+      // A categoria selecionada pode ter sido excluída.
+      setState(() => _selectedCategoryId = null);
+      await _load();
+    }
+  }
+
+  Future<void> _openMenus() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => MenusScreen(api: _api)),
+    );
+    if (changed == true) await _load();
   }
 
   List<MenuProduct> get _filtered {
@@ -97,7 +143,40 @@ class _CardapioScreenState extends State<CardapioScreen> {
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: 20)),
+        actions: [
+          if (!_moduleDisabled && _loadError == null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
+              color: AppColors.surface,
+              onSelected: (value) {
+                if (value == 'categorias') _openCategories();
+                if (value == 'cardapios') _openMenus();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'categorias',
+                  child: Text('Categorias',
+                      style: TextStyle(color: AppColors.textPrimary)),
+                ),
+                PopupMenuItem(
+                  value: 'cardapios',
+                  child: Text('Cardápios por horário',
+                      style: TextStyle(color: AppColors.textPrimary)),
+                ),
+              ],
+            ),
+        ],
       ),
+      floatingActionButton: (_loading || _moduleDisabled || _loadError != null)
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openProduct(),
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Novo item',
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
       body: SafeArea(top: false, child: _buildBody()),
       bottomNavigationBar: const AppBottomNav(currentIndex: 0),
     );
@@ -178,9 +257,17 @@ class _CardapioScreenState extends State<CardapioScreen> {
                   backgroundColor: AppColors.surface,
                   onRefresh: _load,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemBuilder: (context, index) =>
-                        _MenuTile(item: filtered[index]),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+                    itemBuilder: (context, index) {
+                      final item = filtered[index];
+                      return _MenuTile(
+                        item: item,
+                        // Um produto disponível pode mesmo assim estar fora do
+                        // cardápio de hoje (dia da semana ou exceção de data).
+                        availableToday: _availableToday.contains(item.id),
+                        onTap: () => _openProduct(item),
+                      );
+                    },
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemCount: filtered.length,
                   ),
@@ -287,11 +374,26 @@ class _CardapioScreenState extends State<CardapioScreen> {
 }
 
 class _MenuTile extends StatelessWidget {
+  const _MenuTile({
+    required this.item,
+    required this.availableToday,
+    required this.onTap,
+  });
+
   final MenuProduct item;
-  const _MenuTile({required this.item});
+  final bool availableToday;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: _buildCard(),
+    );
+  }
+
+  Widget _buildCard() {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -351,6 +453,24 @@ class _MenuTile extends StatelessWidget {
                         color: AppColors.textSecondary, fontSize: 12),
                   ),
                 ],
+                if (_statusLabel != null || item.optionGroups.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (_statusLabel != null)
+                        _chip(_statusLabel!, _statusColor),
+                      if (item.optionGroups.isNotEmpty)
+                        _chip(
+                          item.optionGroups.length == 1
+                              ? '1 grupo de opções'
+                              : '${item.optionGroups.length} grupos de opções',
+                          AppColors.textSecondary,
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -359,12 +479,39 @@ class _MenuTile extends StatelessWidget {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: item.isAvailable ? AppColors.success : AppColors.danger,
+              color: _statusColor,
               shape: BoxShape.circle,
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Três estados, não dois: o item pode estar ligado e ainda assim fora do
+  /// cardápio de hoje (por dia da semana ou por exceção de data).
+  String? get _statusLabel {
+    if (!item.isAvailable) return 'Indisponível';
+    if (!availableToday) return 'Fora do cardápio hoje';
+    return null;
+  }
+
+  Color get _statusColor {
+    if (!item.isAvailable) return AppColors.danger;
+    if (!availableToday) return const Color(0xFFD29922); // âmbar
+    return AppColors.success;
+  }
+
+  Widget _chip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.w600)),
     );
   }
 }

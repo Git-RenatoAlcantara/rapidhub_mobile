@@ -343,28 +343,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
             ),
           ),
-          const SizedBox(height: 20),
-          _buildSeparator(),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSocialButton(
-                  label: 'Google',
-                  icon: Icons.g_mobiledata,
-                  onTap: () => _showEmBreve('Login com Google'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildSocialButton(
-                  label: 'Microsoft',
-                  icon: Icons.window,
-                  onTap: () => _showEmBreve('Login com Microsoft'),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -377,39 +355,6 @@ class _LoginScreenState extends State<LoginScreen> {
         color: AppColors.textPrimary,
         fontSize: 13,
         fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  Widget _buildSeparator() {
-    return const Row(
-      children: [
-        Expanded(child: Divider(color: AppColors.border)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text('ou continue com',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-        ),
-        Expanded(child: Divider(color: AppColors.border)),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton({
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, color: AppColors.textPrimary, size: 22),
-      label: Text(label,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        side: const BorderSide(color: AppColors.borderStrong),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

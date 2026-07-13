@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../cardapio_screen.dart';
-import '../pedidos_screen.dart';
-import '../chat_list_screen.dart';
-import '../profile_screen.dart';
-import '../configuracoes_screen.dart';
 import '../theme/app_theme.dart';
+import 'home_shell.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key, required this.currentIndex});
@@ -14,31 +10,13 @@ class AppBottomNav extends StatelessWidget {
 
   void _go(BuildContext context, int index) {
     if (index == currentIndex) return;
+    if (index < 0 || index >= AppTab.values.length) return;
 
-    Widget target;
-    switch (index) {
-      case 0:
-        target = const CardapioScreen();
-        break;
-      case 1:
-        target = const PedidosScreen();
-        break;
-      case 2:
-        target = const ChatListScreen();
-        break;
-      case 3:
-        target = const ConfiguracoesScreen();
-        break;
-      case 4:
-        target = const ProfileScreen();
-        break;
-      default:
-        return;
-    }
-
+    // Navega para o [HomeShell], e não para a tela solta: assim a janela do
+    // Windows pode ser alargada depois e o layout de desktop assume no lugar.
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        pageBuilder: (_, __, ___) => target,
+        pageBuilder: (_, __, ___) => HomeShell(tab: AppTab.values[index]),
         transitionDuration: Duration.zero,
         reverseTransitionDuration: Duration.zero,
       ),
@@ -47,6 +25,9 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // No layout de desktop quem navega é a sidebar.
+    if (DesktopScope.of(context)) return const SizedBox.shrink();
+
     Widget item(int index, IconData icon, String label) {
       final active = index == currentIndex;
       final color = active ? AppColors.primary : AppColors.textSecondary;

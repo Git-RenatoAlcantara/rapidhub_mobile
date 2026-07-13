@@ -7,6 +7,7 @@ import 'widgets/app_logo.dart';
 import 'store/store_api.dart';
 import 'store/store_models.dart';
 import 'store/kitchen_group_editor.dart';
+import 'store/menu_mode_editor.dart';
 import 'store/operating_hours_editor.dart';
 import 'store/delivery_zones_editor.dart';
 import 'store/pickup_time_editor.dart';
@@ -33,10 +34,12 @@ class _StoreScreenState extends State<StoreScreen> {
   bool _moduleDisabled = false;
   String? _loadError;
 
+  MenuMode _menuMode = MenuMode.regular;
   KitchenGroup? _kitchenGroup;
   OperatingHours _operatingHours = OperatingHours.initial();
   DeliveryZones _deliveryZones = DeliveryZones.initial();
   PickupTime _pickupTime = PickupTime.initial();
+  String _abandonmentStage = kDefaultAbandonmentStage;
 
   String _savedSignature = '';
 
@@ -49,12 +52,14 @@ class _StoreScreenState extends State<StoreScreen> {
   /// Assinatura estável do estado atual para dirty-tracking (espelha o webapp).
   String _signature() {
     return jsonEncode({
+      'menuMode': _menuMode.value,
       'kitchenGroup': _kitchenGroup == null
           ? ''
           : '${_kitchenGroup!.connectionId}:${_kitchenGroup!.groupId}',
       'operatingHours': _operatingHours.signature,
       'deliveryZones': _deliveryZones.signature,
       'pickupTime': _pickupTime.signature,
+      'abandonmentTriggerStage': _abandonmentStage,
     });
   }
 
@@ -70,10 +75,13 @@ class _StoreScreenState extends State<StoreScreen> {
       final store = await _api.fetchStore();
       if (!mounted) return;
       setState(() {
+        _menuMode = MenuMode.parse(store['menuMode']);
         _kitchenGroup = KitchenGroup.fromJson(store['kitchenGroup']);
         _operatingHours = OperatingHours.fromMetadata(store);
         _deliveryZones = DeliveryZones.fromMetadata(store);
         _pickupTime = PickupTime.fromMetadata(store);
+        _abandonmentStage =
+            parseAbandonmentStage(store['abandonmentTriggerStage']);
         _savedSignature = _signature();
         _loading = false;
       });
@@ -96,10 +104,12 @@ class _StoreScreenState extends State<StoreScreen> {
     setState(() => _saving = true);
     try {
       final store = {
+        'menuMode': _menuMode.value,
         'kitchenGroup': _kitchenGroup?.toJson(),
         'operatingHours': _operatingHours.toMetadata(),
         'deliveryZones': _deliveryZones.toMetadata(),
         'pickupTime': _pickupTime.toMetadata(),
+        'abandonmentTriggerStage': _abandonmentStage,
       };
       await _api.saveStore(store);
       if (!mounted) return;
@@ -184,6 +194,12 @@ class _StoreScreenState extends State<StoreScreen> {
           style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
         const SizedBox(height: 24),
+        MenuModeEditor(
+          value: _menuMode,
+          disabled: _saving,
+          onChanged: (m) => setState(() => _menuMode = m),
+        ),
+        const SizedBox(height: 24),
         KitchenGroupEditor(
           value: _kitchenGroup,
           api: _api,
@@ -207,6 +223,12 @@ class _StoreScreenState extends State<StoreScreen> {
           value: _pickupTime,
           disabled: _saving,
           onChanged: () => setState(() {}),
+        ),
+        const SizedBox(height: 24),
+        AbandonmentStageEditor(
+          value: _abandonmentStage,
+          disabled: _saving,
+          onChanged: (v) => setState(() => _abandonmentStage = v),
         ),
       ],
     );

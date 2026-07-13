@@ -27,10 +27,21 @@ class OrdersApi {
   }
 
   /// GET /api/orders → pedidos em andamento (qualquer dia) + concluídos de hoje.
-  /// Passar [status] filtra por um status específico em todos os dias.
-  Future<List<Order>> fetchOrders({String? status}) async {
+  ///
+  /// [status] filtra por um status específico em todos os dias. [from]/[to]
+  /// recortam por data de criação (o backend aceita um ou outro, não os dois).
+  Future<List<Order>> fetchOrders({
+    String? status,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final query = <String, String>{
+      if (status != null) 'status': status,
+      if (from != null) 'from': from.toUtc().toIso8601String(),
+      if (to != null) 'to': to.toUtc().toIso8601String(),
+    };
     final uri = Uri.parse('$baseUrl/api/orders').replace(
-      queryParameters: status == null ? null : {'status': status},
+      queryParameters: query.isEmpty ? null : query,
     );
     final resp = await http.get(uri, headers: await _headers());
     if (resp.statusCode == 403) throw const OrdersModuleDisabled();
@@ -144,23 +155,78 @@ enum OrderStatus {
       this == OrderStatus.completed || this == OrderStatus.canceled;
 }
 
+/// Opção escolhida num item (tamanho, borda, adicional…).
+///
+/// O backend grava as chaves em português (`grupo`/`nome`), como as monta o
+/// handler `finalizar-pedido`. Manter os mesmos nomes evita traduzir no parse.
+class OrderOption {
+  const OrderOption({
+    required this.grupo,
+    required this.nome,
+    required this.priceDelta,
+  });
+
+  final String grupo;
+  final String nome;
+  final double priceDelta;
+
+  factory OrderOption.fromJson(Map<String, dynamic> json) => OrderOption(
+        grupo: (json['grupo'] ?? '').toString(),
+        nome: (json['nome'] ?? '').toString(),
+        priceDelta: (json['priceDelta'] is num)
+            ? (json['priceDelta'] as num).toDouble()
+            : 0,
+      );
+}
+
 class OrderItem {
   const OrderItem({
     required this.name,
     required this.quantity,
     required this.lineTotal,
+    this.unitPrice = 0,
+    this.options = const [],
+    this.notes,
   });
 
   final String name;
   final int quantity;
   final double lineTotal;
+  final double unitPrice;
 
-  factory OrderItem.fromJson(Map<String, dynamic> json) => OrderItem(
-        name: (json['name'] ?? '').toString(),
-        quantity: (json['quantity'] is num) ? json['quantity'] : 1,
-        lineTotal:
-            (json['lineTotal'] is num) ? (json['lineTotal'] as num).toDouble() : 0,
-      );
+  /// Tamanho, borda, adicionais — já com o preço somado em [lineTotal].
+  final List<OrderOption> options;
+
+  /// Observação do cliente para este item ("sem cebola").
+  final String? notes;
+
+  /// "Grande, Catupiry" — as opções em uma linha, para o cupom e a lista.
+  String get optionsSummary =>
+      options.map((o) => o.nome).where((n) => n.isNotEmpty).join(', ');
+
+  factory OrderItem.fromJson(Map<String, dynamic> json) {
+    final rawOptions = json['options'];
+    final rawNotes = json['notes'];
+    return OrderItem(
+      name: (json['name'] ?? '').toString(),
+      quantity: (json['quantity'] is num) ? json['quantity'] : 1,
+      lineTotal: (json['lineTotal'] is num)
+          ? (json['lineTotal'] as num).toDouble()
+          : 0,
+      unitPrice: (json['unitPrice'] is num)
+          ? (json['unitPrice'] as num).toDouble()
+          : 0,
+      options: (rawOptions is List)
+          ? rawOptions
+              .whereType<Map>()
+              .map((o) => OrderOption.fromJson(o.cast<String, dynamic>()))
+              .toList()
+          : const [],
+      notes: (rawNotes is String && rawNotes.trim().isNotEmpty)
+          ? rawNotes
+          : null,
+    );
+  }
 }
 
 class Order {
@@ -173,6 +239,14 @@ class Order {
     required this.total,
     required this.items,
     required this.createdAt,
+    this.updatedAt,
+    this.customerPhone,
+    this.address,
+    this.paymentMethod,
+    this.changeFor,
+    this.notes,
+    this.subtotal = 0,
+    this.deliveryFee = 0,
   });
 
   final String id;
@@ -183,6 +257,47 @@ class Order {
   final double total;
   final List<OrderItem> items;
   final DateTime? createdAt;
+
+  /// Última mudança de status — base do tempo médio de preparo no painel.
+  final DateTime? updatedAt;
+
+  final String? customerPhone;
+
+  /// Endereço da entrega. Nulo nos pedidos de retirada.
+  final String? address;
+
+  /// `pix` | `cash` | `card`.
+  final String? paymentMethod;
+
+  /// Valor para o qual o entregador deve levar troco (só em dinheiro).
+  final double? changeFor;
+
+  /// Observação geral do pedido.
+  final String? notes;
+
+  final double subtotal;
+  final double deliveryFee;
+
+  bool get isPickup => fulfillment == 'pickup';
+
+  String get fulfillmentLabel => isPickup ? 'Retirada' : 'Entrega';
+
+  /// Rótulo da forma de pagamento, como no webapp. Método desconhecido é
+  /// mostrado cru, em vez de sumir do cupom.
+  String get paymentLabel {
+    switch (paymentMethod) {
+      case 'pix':
+        return 'Pix';
+      case 'cash':
+        return 'Dinheiro';
+      case 'card':
+        return 'Cartão';
+      case null:
+        return '—';
+      default:
+        return paymentMethod!;
+    }
+  }
 
   factory Order.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
@@ -201,10 +316,35 @@ class Order {
           : const [],
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString())
           ?.toLocal(),
+      updatedAt: DateTime.tryParse((json['updatedAt'] ?? '').toString())
+          ?.toLocal(),
+      customerPhone: _text(json['customerPhone']),
+      address: _text(json['address']),
+      paymentMethod: _text(json['paymentMethod']),
+      changeFor:
+          (json['changeFor'] is num) ? (json['changeFor'] as num).toDouble() : null,
+      notes: _text(json['notes']),
+      subtotal:
+          (json['subtotal'] is num) ? (json['subtotal'] as num).toDouble() : 0,
+      deliveryFee: (json['deliveryFee'] is num)
+          ? (json['deliveryFee'] as num).toDouble()
+          : 0,
     );
   }
 
-  /// Resumo dos itens: "Smash Clássico x1, Coca-Cola x1".
-  String get itemsSummary =>
-      items.map((i) => '${i.name} x${i.quantity}').join(', ');
+  /// String não-vazia, ou `null`. O backend manda `null` e, em alguns casos,
+  /// string vazia — os dois significam "não informado".
+  static String? _text(Object? raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  /// Resumo dos itens, com as opções escolhidas:
+  /// "Pizza (Grande, Catupiry) x1, Coca-Cola x1".
+  String get itemsSummary => items.map((i) {
+        final opts = i.optionsSummary;
+        final name = opts.isEmpty ? i.name : '${i.name} ($opts)';
+        return '$name x${i.quantity}';
+      }).join(', ');
 }

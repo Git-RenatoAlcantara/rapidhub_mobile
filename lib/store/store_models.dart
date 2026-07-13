@@ -7,6 +7,55 @@ import 'dart:convert';
 /// mesmo formato consumido pelas funções de domínio do backend.
 
 // ============================================================
+// Tipo de cardápio (store.menuMode)
+// ============================================================
+
+/// Como o agente consulta e vende os itens do cardápio.
+enum MenuMode {
+  regular('regular', 'Restaurante/Pizzaria'),
+  marmitex('marmitex', 'Marmitex por dia');
+
+  const MenuMode(this.value, this.label);
+
+  final String value;
+  final String label;
+
+  /// Qualquer valor fora do enum cai em [MenuMode.regular], como no webapp.
+  static MenuMode parse(Object? raw) =>
+      raw == 'marmitex' ? MenuMode.marmitex : MenuMode.regular;
+}
+
+// ============================================================
+// Gatilho de abandono (store.abandonmentTriggerStage)
+// ============================================================
+
+/// Etapa em que o cliente passa a contar como "no funil" e liga o cronômetro
+/// de recuperação automática.
+class AbandonmentStage {
+  const AbandonmentStage(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
+const String kDefaultAbandonmentStage = 'delivery_address';
+
+const List<AbandonmentStage> kAbandonmentStages = [
+  AbandonmentStage(
+      'delivery_address', 'Ao informar endereço de entrega (Padrão)'),
+  AbandonmentStage('product_selection', 'Ao escolher produto/iniciar pedido'),
+  AbandonmentStage('pickup_selected', 'Ao selecionar retirada presencial'),
+  AbandonmentStage('any_intent', 'Qualquer um dos acima'),
+];
+
+/// Cai no padrão quando o valor salvo é vazio ou desconhecido.
+String parseAbandonmentStage(Object? raw) {
+  final value = (raw ?? '').toString();
+  final known = kAbandonmentStages.any((s) => s.value == value);
+  return known ? value : kDefaultAbandonmentStage;
+}
+
+// ============================================================
 // Grupo da cozinha
 // ============================================================
 

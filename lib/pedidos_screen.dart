@@ -1,15 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'menu/menu_api.dart' show formatBrl;
 import 'orders/orders_api.dart';
+import 'orders/orders_stream.dart';
+import 'printing/printer_settings.dart';
+import 'printing/thermal_printer.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_bottom_nav.dart';
 
 class PedidosScreen extends StatefulWidget {
-  const PedidosScreen({super.key, OrdersApi? api}) : _injectedApi = api;
+  const PedidosScreen({super.key, OrdersApi? api, OrdersStream? stream})
+      : _injectedApi = api,
+        _injectedStream = stream;
 
   /// Permite injetar um [OrdersApi] falso nos testes. Em produção fica `null`.
   final OrdersApi? _injectedApi;
+
+  /// Idem para o stream SSE dos pedidos.
+  final OrdersStream? _injectedStream;
 
   @override
   State<PedidosScreen> createState() => _PedidosScreenState();
@@ -17,6 +27,16 @@ class PedidosScreen extends StatefulWidget {
 
 class _PedidosScreenState extends State<PedidosScreen> {
   late final OrdersApi _api = widget._injectedApi ?? OrdersApi();
+  late final OrdersStream _stream = widget._injectedStream ?? OrdersStream();
+  final PrinterSettingsStore _printerStore = PrinterSettingsStore();
+
+  StreamSubscription<OrderEvent>? _eventsSub;
+
+  PrinterSettings _printer = const PrinterSettings();
+
+  /// Pedidos já enviados à impressora nesta sessão — evita reimprimir a cada
+  /// atualização da lista quando a impressão automática está ligada.
+  final Set<String> _printed = <String>{};
 
   bool _loading = true;
   bool _moduleDisabled = false;
@@ -41,7 +61,62 @@ class _PedidosScreenState extends State<PedidosScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPrinter();
     _load();
+    _listenToOrders();
+  }
+
+  @override
+  void dispose() {
+    _eventsSub?.cancel();
+    _stream.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPrinter() async {
+    final p = await _printerStore.load();
+    if (!mounted) return;
+    setState(() => _printer = p);
+  }
+
+  /// Pedidos em tempo real: entram na lista assim que o servidor avisa, sem
+  /// esperar o próximo refresh.
+  Future<void> _listenToOrders() async {
+    _eventsSub = _stream.events.listen(_onOrderEvent);
+    await _stream.connect();
+  }
+
+  void _onOrderEvent(OrderEvent event) {
+    if (!mounted) return;
+    setState(() => _applyIncoming(event.order));
+
+    // Pedido novo já sai na impressora — é o ponto do stream.
+    if (event.type == OrderEventType.created) {
+      unawaited(_autoPrint(event.order));
+    }
+  }
+
+  /// Insere ou atualiza o pedido nas duas listas, respeitando o filtro ativo.
+  void _applyIncoming(Order order) {
+    List<Order> upsert(List<Order> list) {
+      final index = list.indexWhere((o) => o.id == order.id);
+      if (index == -1) return [order, ...list];
+      final copy = [...list];
+      copy[index] = order;
+      return copy;
+    }
+
+    _panel = upsert(_panel);
+
+    final status = _filters[_filter].$2;
+    if (status == null) {
+      _orders = _panel;
+    } else if (OrderStatus.parse(status) == order.status) {
+      _orders = upsert(_orders);
+    } else {
+      // Mudou de status e saiu do filtro visível.
+      _orders = _orders.where((o) => o.id != order.id).toList();
+    }
   }
 
   Future<void> _load() async {
@@ -62,6 +137,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
         _orders = status == null ? results[0] : results[1];
         _loading = false;
       });
+      unawaited(_autoPrintNewOrders());
     } on OrdersModuleDisabled {
       if (!mounted) return;
       setState(() {
@@ -159,6 +235,55 @@ class _PedidosScreenState extends State<PedidosScreen> {
     });
   }
 
+  /// Imprime o cupom sob demanda (item do menu de ações).
+  Future<void> _print(Order order) async {
+    Navigator.of(context).maybePop();
+    if (!_printer.isConfigured) {
+      _snack('Configure a impressora em Configurações > Impressora térmica.');
+      return;
+    }
+    try {
+      await ThermalPrinter(_printer).printOrder(order);
+      if (!mounted) return;
+      _printed.add(order.id);
+      _snack('Cupom do pedido #${order.orderNumber} enviado.');
+    } on PrinterException catch (e) {
+      if (!mounted) return;
+      _snack(e.message);
+    }
+  }
+
+  /// Imprime um pedido recebido, uma única vez. Falhas são silenciosas: a
+  /// impressora pode estar fora do ar e o operador ainda imprime manualmente.
+  ///
+  /// Devolve `false` quando a impressora não respondeu, para o chamador em lote
+  /// parar de insistir.
+  Future<bool> _autoPrint(Order order) async {
+    if (!_printer.autoPrint || !_printer.isConfigured) return true;
+    if (order.status != OrderStatus.received) return true;
+    if (!_printed.add(order.id)) return true; // já saiu na impressora
+
+    try {
+      await ThermalPrinter(_printer).printOrder(order);
+      return true;
+    } on PrinterException {
+      // Libera para uma nova tentativa no próximo evento ou refresh.
+      _printed.remove(order.id);
+      return false;
+    }
+  }
+
+  /// Rede de segurança do SSE: ao atualizar a lista, imprime os recebidos que
+  /// ainda não saíram (por exemplo, os que chegaram com o app fechado).
+  Future<void> _autoPrintNewOrders() async {
+    if (!_printer.autoPrint || !_printer.isConfigured) return;
+    for (final order
+        in _panel.where((o) => o.status == OrderStatus.received)) {
+      final ok = await _autoPrint(order);
+      if (!ok) return; // impressora indisponível: tenta no próximo refresh
+    }
+  }
+
   String _errorText(Object e) {
     final msg = e.toString();
     return msg.startsWith('Exception: ')
@@ -177,8 +302,29 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
+  /// Linha de detalhe do pedido no menu de ações (ícone + texto).
+  Widget _detailRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: AppColors.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _openActions(Order order) {
-    if (order.status.isTerminal) return;
+    // Pedidos encerrados ainda abrem o menu: dá para tirar a 2ª via do cupom.
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -201,30 +347,68 @@ class _PedidosScreenState extends State<PedidosScreen> {
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                'Pedido #${order.orderNumber} • ${order.customerName}',
-                style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pedido #${order.orderNumber} • ${order.customerName}',
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  _detailRow(Icons.local_shipping_outlined,
+                      order.fulfillmentLabel),
+                  if (!order.isPickup && order.address != null)
+                    _detailRow(Icons.location_on_outlined, order.address!),
+                  if (order.customerPhone != null)
+                    _detailRow(Icons.phone_outlined, order.customerPhone!),
+                  _detailRow(
+                    Icons.payments_outlined,
+                    order.paymentMethod == 'cash' && order.changeFor != null
+                        ? '${order.paymentLabel} • troco para '
+                            '${formatBrl(order.changeFor!)}'
+                        : order.paymentLabel,
+                  ),
+                  if (order.notes != null)
+                    _detailRow(Icons.sticky_note_2_outlined, order.notes!),
+                ],
               ),
             ),
             const SizedBox(height: 12),
             ListTile(
-              leading: const Icon(Icons.arrow_forward, color: AppColors.primary),
-              title: const Text('Avançar status',
+              leading:
+                  const Icon(Icons.print_outlined, color: AppColors.primary),
+              title: const Text('Imprimir cupom',
                   style: TextStyle(color: AppColors.textPrimary)),
-              subtitle: const Text('Avisa o cliente no WhatsApp',
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12)),
-              onTap: () => _advance(order),
+              subtitle: Text(
+                _printer.isConfigured
+                    ? 'Impressora ${_printer.host}'
+                    : 'Impressora não configurada',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
+              ),
+              onTap: () => _print(order),
             ),
-            ListTile(
-              leading: const Icon(Icons.close, color: AppColors.danger),
-              title: const Text('Cancelar pedido',
-                  style: TextStyle(color: AppColors.danger)),
-              onTap: () => _cancel(order),
-            ),
+            if (!order.status.isTerminal) ...[
+              ListTile(
+                leading:
+                    const Icon(Icons.arrow_forward, color: AppColors.primary),
+                title: const Text('Avançar status',
+                    style: TextStyle(color: AppColors.textPrimary)),
+                subtitle: const Text('Avisa o cliente no WhatsApp',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+                onTap: () => _advance(order),
+              ),
+              ListTile(
+                leading: const Icon(Icons.close, color: AppColors.danger),
+                title: const Text('Cancelar pedido',
+                    style: TextStyle(color: AppColors.danger)),
+                onTap: () => _cancel(order),
+              ),
+            ],
             const SizedBox(height: 8),
           ],
         ),
