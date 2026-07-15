@@ -43,13 +43,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
   String? _loadError;
   int _filter = 0;
 
-  /// (rótulo, status enviado à API — `null` = visão painel).
+  /// (rótulo, status enviado à API — `null` = todos os pedidos). Segue a ordem
+  /// do fluxo; "Saiu p/ entrega" e "Aguardando retirada" são as etapas paralelas
+  /// de entrega e retirada.
   static const List<(String, String?)> _filters = [
-    ('Painel', null),
+    ('Todos', null),
     ('Recebidos', 'received'),
     ('Em preparo', 'preparing'),
     ('Prontos', 'ready'),
+    ('Saiu p/ entrega', 'out_for_delivery'),
+    ('Aguardando retirada', 'awaiting_pickup'),
     ('Concluídos', 'completed'),
+    ('Cancelados', 'canceled'),
   ];
 
   /// Pedidos do painel (sem filtro) — base para os cartões de estatística.
@@ -323,6 +328,169 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
+  /// Sequência de etapas conforme o tipo de pedido. Entrega passa por "Saiu para
+  /// entrega"; retirada por "Aguardando retirada". As duas convergem em Concluído.
+  List<OrderStatus> _statusFlow(Order order) {
+    return [
+      OrderStatus.received,
+      OrderStatus.preparing,
+      OrderStatus.ready,
+      order.isPickup ? OrderStatus.awaitingPickup : OrderStatus.outForDelivery,
+      OrderStatus.completed,
+    ];
+  }
+
+  IconData _statusIcon(OrderStatus s) {
+    switch (s) {
+      case OrderStatus.received:
+        return Icons.receipt_long_outlined;
+      case OrderStatus.preparing:
+        return Icons.soup_kitchen_outlined;
+      case OrderStatus.ready:
+        return Icons.check_circle_outline;
+      case OrderStatus.outForDelivery:
+        return Icons.local_shipping_outlined;
+      case OrderStatus.awaitingPickup:
+        return Icons.storefront_outlined;
+      case OrderStatus.completed:
+        return Icons.task_alt;
+      case OrderStatus.canceled:
+        return Icons.cancel_outlined;
+      case OrderStatus.unknown:
+        return Icons.help_outline;
+    }
+  }
+
+  /// "15/07 14:32" — hora curta para os nós da timeline. Só temos horário real
+  /// da criação e da última mudança de status.
+  String? _shortTime(DateTime? dt) {
+    if (dt == null) return null;
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(dt.day)}/${two(dt.month)} ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  /// Linha do tempo das etapas do pedido. Marca as já percorridas, a atual e as
+  /// pendentes. Cancelado é terminal: mostra Recebido + o nó de cancelamento.
+  Widget _statusTimeline(Order order) {
+    if (order.status == OrderStatus.canceled) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _timelineRow(
+            icon: _statusIcon(OrderStatus.received),
+            label: OrderStatus.received.label,
+            time: _shortTime(order.createdAt),
+            state: _StepState.done,
+            isLast: false,
+          ),
+          _timelineRow(
+            icon: Icons.cancel_outlined,
+            label: 'Cancelado',
+            time: _shortTime(order.updatedAt),
+            state: _StepState.canceled,
+            isLast: true,
+          ),
+        ],
+      );
+    }
+
+    final flow = _statusFlow(order);
+    final currentIndex = flow.indexOf(order.status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < flow.length; i++)
+          _timelineRow(
+            icon: _statusIcon(flow[i]),
+            label: flow[i].label,
+            time: i == 0
+                ? _shortTime(order.createdAt)
+                : (i == currentIndex ? _shortTime(order.updatedAt) : null),
+            state: currentIndex < 0
+                ? _StepState.pending
+                : i < currentIndex
+                    ? _StepState.done
+                    : i == currentIndex
+                        ? _StepState.current
+                        : _StepState.pending,
+            isLast: i == flow.length - 1,
+          ),
+      ],
+    );
+  }
+
+  Widget _timelineRow({
+    required IconData icon,
+    required String label,
+    String? time,
+    required _StepState state,
+    required bool isLast,
+  }) {
+    final Color color = switch (state) {
+      _StepState.done || _StepState.current => AppColors.primary,
+      _StepState.canceled => AppColors.danger,
+      _StepState.pending => AppColors.borderStrong,
+    };
+    final bool filled = state != _StepState.pending;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color:
+                      filled ? color.withValues(alpha: 0.15) : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 2),
+                ),
+                child: Icon(icon, size: 14, color: color),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: color.withValues(alpha: 0.4),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: EdgeInsets.only(top: 3, bottom: isLast ? 0 : 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: state == _StepState.pending
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                    fontSize: 13.5,
+                    fontWeight: state == _StepState.current
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+                if (time != null)
+                  Text(
+                    time,
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openActions(Order order) async {
     // Recarrega a config da impressora: no layout desktop esta tela fica viva no
     // IndexedStack e o IP pode ter sido salvo depois do initState.
@@ -336,7 +504,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 12),
@@ -377,6 +546,18 @@ class _PedidosScreenState extends State<PedidosScreen> {
                   ),
                   if (order.notes != null)
                     _detailRow(Icons.sticky_note_2_outlined, order.notes!),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'ETAPAS',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _statusTimeline(order),
                 ],
               ),
             ),
@@ -415,6 +596,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
             ],
             const SizedBox(height: 8),
           ],
+          ),
         ),
       ),
     );
@@ -620,6 +802,9 @@ class _Stat {
   final String value;
   const _Stat(this.label, this.value);
 }
+
+/// Estado de um nó da linha do tempo do pedido.
+enum _StepState { done, current, pending, canceled }
 
 class _StatCard extends StatelessWidget {
   final _Stat stat;
