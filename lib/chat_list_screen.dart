@@ -2333,6 +2333,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
+        heroTag: 'fab_conversas',
         onPressed: () {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

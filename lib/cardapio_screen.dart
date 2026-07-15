@@ -170,6 +170,7 @@ class _CardapioScreenState extends State<CardapioScreen> {
       floatingActionButton: (_loading || _moduleDisabled || _loadError != null)
           ? null
           : FloatingActionButton.extended(
+              heroTag: 'fab_cardapio',
               onPressed: () => _openProduct(),
               backgroundColor: AppColors.primary,
               icon: const Icon(Icons.add, color: Colors.white),

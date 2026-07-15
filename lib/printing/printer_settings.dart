@@ -70,35 +70,33 @@ class PrinterSettingsStore {
   static const _kCopies = 'printer_copies';
   static const _kAutoPrint = 'printer_auto_print';
 
+  // Leituras/escritas são sequenciais de propósito: o flutter_secure_storage
+  // não é reentrante no Android e operações concorrentes (Future.wait) se
+  // atropelam — writes eram perdidos e o IP não persistia.
   Future<PrinterSettings> load() async {
-    final all = await Future.wait([
-      _storage.read(key: _kHost),
-      _storage.read(key: _kPort),
-      _storage.read(key: _kStoreName),
-      _storage.read(key: _kPaper),
-      _storage.read(key: _kCopies),
-      _storage.read(key: _kAutoPrint),
-    ]);
+    final host = await _storage.read(key: _kHost);
+    final port = await _storage.read(key: _kPort);
+    final storeName = await _storage.read(key: _kStoreName);
+    final paper = await _storage.read(key: _kPaper);
+    final copies = await _storage.read(key: _kCopies);
+    final autoPrint = await _storage.read(key: _kAutoPrint);
     return PrinterSettings(
-      host: all[0] ?? '',
-      port: int.tryParse(all[1] ?? '') ?? 9100,
-      storeName: all[2] ?? '',
-      paperWidth: all[3] == PaperWidth.mm58.name
-          ? PaperWidth.mm58
-          : PaperWidth.mm80,
-      copies: int.tryParse(all[4] ?? '') ?? 1,
-      autoPrint: all[5] == 'true',
+      host: host ?? '',
+      port: int.tryParse(port ?? '') ?? 9100,
+      storeName: storeName ?? '',
+      paperWidth:
+          paper == PaperWidth.mm58.name ? PaperWidth.mm58 : PaperWidth.mm80,
+      copies: int.tryParse(copies ?? '') ?? 1,
+      autoPrint: autoPrint == 'true',
     );
   }
 
   Future<void> save(PrinterSettings s) async {
-    await Future.wait([
-      _storage.write(key: _kHost, value: s.host.trim()),
-      _storage.write(key: _kPort, value: s.port.toString()),
-      _storage.write(key: _kStoreName, value: s.storeName.trim()),
-      _storage.write(key: _kPaper, value: s.paperWidth.name),
-      _storage.write(key: _kCopies, value: s.copies.toString()),
-      _storage.write(key: _kAutoPrint, value: s.autoPrint.toString()),
-    ]);
+    await _storage.write(key: _kHost, value: s.host.trim());
+    await _storage.write(key: _kPort, value: s.port.toString());
+    await _storage.write(key: _kStoreName, value: s.storeName.trim());
+    await _storage.write(key: _kPaper, value: s.paperWidth.name);
+    await _storage.write(key: _kCopies, value: s.copies.toString());
+    await _storage.write(key: _kAutoPrint, value: s.autoPrint.toString());
   }
 }

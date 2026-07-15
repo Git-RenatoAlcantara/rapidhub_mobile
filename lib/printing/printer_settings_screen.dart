@@ -68,14 +68,19 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
+    await _persist();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    _toast('Configuração salva.');
+  }
+
+  /// Grava a configuração atual sem tocar na UI. Usado tanto pelo botão Salvar
+  /// quanto pelo auto-save ao sair da tela.
+  Future<void> _persist() async {
     final s = _current;
     await _store.save(s);
     if (!mounted) return;
-    setState(() {
-      _settings = s;
-      _saving = false;
-    });
-    _toast('Configuração salva.');
+    _settings = s;
   }
 
   Future<void> _test() async {
@@ -108,6 +113,21 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Sair da tela salva sozinho: o operador digita o IP e volta sem precisar
+    // lembrar de tocar em "Salvar".
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final navigator = Navigator.of(context);
+        await _persist();
+        navigator.pop();
+      },
+      child: _buildScaffold(),
+    );
+  }
+
+  Widget _buildScaffold() {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(

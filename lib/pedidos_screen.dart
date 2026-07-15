@@ -323,7 +323,11 @@ class _PedidosScreenState extends State<PedidosScreen> {
     );
   }
 
-  void _openActions(Order order) {
+  Future<void> _openActions(Order order) async {
+    // Recarrega a config da impressora: no layout desktop esta tela fica viva no
+    // IndexedStack e o IP pode ter sido salvo depois do initState.
+    await _loadPrinter();
+    if (!mounted) return;
     // Pedidos encerrados ainda abrem o menu: dá para tirar a 2ª via do cupom.
     showModalBottomSheet<void>(
       context: context,
