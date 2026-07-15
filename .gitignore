@@ -18,3 +18,6 @@ ios/Flutter/ephemeral/
 *.iml
 *.log
 .DS_Store
+
+# Instalador Windows gerado (Inno Setup) — binario grande, nao versionar
+installer/Output/

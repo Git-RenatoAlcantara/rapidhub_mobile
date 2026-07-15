@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 // Importa os teus ecrãs
+import 'desktop/desktop_boot.dart';
+import 'printing/print_server.dart';
 import 'splash_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/home_shell.dart' show kDesktopBreakpoint;
@@ -28,9 +32,15 @@ class _AdaptiveScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
-void main() {
+Future<void> main(List<String> args) async {
   // Garante que os widgets do Flutter estão inicializados antes de correr a app
   WidgetsFlutterBinding.ensureInitialized();
+  // No desktop: autostart com o Windows + janela que minimiza para a bandeja,
+  // para o app seguir servindo a ponte de impressão sem ficar no caminho.
+  await setupDesktop(args);
+  // Sobe a ponte local para o site (navegador) imprimir na térmica pelo app.
+  // Em mobile/web o start() é no-op.
+  unawaited(PrintServer().start());
   runApp(const RapidhubApp());
 }
 

@@ -23,6 +23,10 @@ dependencies:
   http_parser: ^4.1.1
   permission_handler: ^11.3.1
   url_launcher: ^6.3.1
+  window_manager: ^0.5.2
+  tray_manager: ^0.5.3
+  launch_at_startup: ^0.5.1
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:
@@ -47,6 +51,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/logo.png
+    - assets/icon/tray.ico
     - assets/splashscreen.mp4
   # assets:
   #  - images/a_dot_burr.jpeg
