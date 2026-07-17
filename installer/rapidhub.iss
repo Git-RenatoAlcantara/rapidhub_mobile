@@ -49,3 +49,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Abrir {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; O app fica na bandeja e intercepta o "X" — se estiver aberto, a remoção dos
+; arquivos falha. Mata o processo antes de desinstalar.
+Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden; RunOnceId: "KillApp"
+; Remove o autostart que o app grava no boot (launch_at_startup escreve o valor
+; ProductName='rapidhubmobile' em HKCU\...\Run). Sem isto sobra uma entrada
+; morta apontando para um exe apagado. Best-effort: /f engole se nao existir.
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v rapidhubmobile /f"; Flags: runhidden; RunOnceId: "DelAutostart"
