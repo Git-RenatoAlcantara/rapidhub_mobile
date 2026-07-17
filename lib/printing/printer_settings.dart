@@ -24,7 +24,7 @@ class PrinterSettings {
     this.storeName = '',
     this.paperWidth = PaperWidth.mm80,
     this.copies = 1,
-    this.autoPrint = false,
+    this.autoPrint = true,
   });
 
   final PrinterConnection connection;
@@ -131,7 +131,8 @@ class PrinterSettingsStore {
       paperWidth:
           paper == PaperWidth.mm58.name ? PaperWidth.mm58 : PaperWidth.mm80,
       copies: int.tryParse(copies ?? '') ?? 1,
-      autoPrint: autoPrint == 'true',
+      // Liga por padrão: só um valor salvo explicitamente ('false') desliga.
+      autoPrint: autoPrint == null ? true : autoPrint == 'true',
     );
   }
 

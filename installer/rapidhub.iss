@@ -7,7 +7,7 @@
 ;   Saída: installer\Output\rapidhub-setup-<versao>.exe
 
 #define AppName "RapidHub"
-#define AppVersion "1.0.4"
+#define AppVersion "1.0.5"
 #define AppExe "rapidhubmobile.exe"
 #define Publisher "RapidHub"
 ; Caminho da pasta de build, relativo a este .iss (installer\ -> raiz do repo).
