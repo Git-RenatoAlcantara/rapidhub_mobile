@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "if grep -q 'flutter build'; then printf '%s' '{\"systemMessage\":\"⚠️  Antes de buildar: suba a versao em pubspec.yaml (version: X.Y.Z+N) e no installer/rapidhub.iss se for release.\",\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"Build do Flutter detectado. Verifique se o campo version: em pubspec.yaml foi incrementado desde o ultimo release. Se nao foi, avise o usuario antes de continuar o build.\"}}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,11 +1,19 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show compute, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 import 'printer_settings.dart';
 import 'thermal_printer.dart';
+import 'windows_raw_printer.dart';
 
-/// Configuração da impressora térmica de rede (ESC/POS na porta 9100).
+/// Roda `EnumPrinters` fora da thread de UI (via `compute`). O parâmetro é
+/// ignorado — `compute` exige uma função de um argumento.
+List<String> _enumPrintersIsolate(void _) => WindowsRawPrinter.listPrinters();
+
+/// Configuração da impressora térmica (ESC/POS), por rede ou USB.
 class PrinterSettingsScreen extends StatefulWidget {
   const PrinterSettingsScreen({super.key, PrinterSettingsStore? store})
       : _injectedStore = store;
@@ -29,6 +37,13 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _testing = false;
+
+  /// USB só existe no desktop Windows (spool RAW via winspool).
+  bool get _usbSupported => !kIsWeb && Platform.isWindows;
+
+  /// Impressoras instaladas no Windows, para o dropdown do modo USB.
+  List<String> _usbPrinters = const [];
+  bool _loadingUsb = false;
 
   @override
   void initState() {
@@ -55,6 +70,19 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
       _portController.text = s.port.toString();
       _copiesController.text = s.copies.toString();
       _loading = false;
+    });
+    if (_usbSupported) _refreshUsbPrinters();
+  }
+
+  /// Lê as impressoras instaladas no Windows. Roda fora da thread de UI porque
+  /// EnumPrinters pode demorar se houver impressoras de rede offline.
+  Future<void> _refreshUsbPrinters() async {
+    setState(() => _loadingUsb = true);
+    final list = await compute(_enumPrintersIsolate, null);
+    if (!mounted) return;
+    setState(() {
+      _usbPrinters = list;
+      _loadingUsb = false;
     });
   }
 
@@ -86,7 +114,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   Future<void> _test() async {
     final s = _current;
     if (!s.isConfigured) {
-      _toast('Informe o IP da impressora.', error: true);
+      _toast(
+        s.connection == PrinterConnection.network
+            ? 'Informe o IP da impressora.'
+            : 'Selecione a impressora do Windows.',
+        error: true,
+      );
       return;
     }
     setState(() => _testing = true);
@@ -105,8 +138,12 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
   void _toast(String message, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: error ? AppColors.danger : AppColors.surfaceAlt,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: error ? AppColors.danger : AppColors.success,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -180,41 +217,32 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Endereço IP da impressora',
+                const Text('Tipo de conexão',
                     style:
                         TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: _hostController,
-                  keyboardType: TextInputType.text,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: AppTheme.inputDecoration(
-                    hint: '192.168.0.100',
-                    prefixIcon: Icons.print_outlined,
+                SegmentedButton<PrinterConnection>(
+                  segments: [
+                    for (final c in PrinterConnection.values)
+                      ButtonSegment(value: c, label: Text(c.label)),
+                  ],
+                  selected: {_settings.connection},
+                  onSelectionChanged: (v) => setState(
+                    () => _settings =
+                        _settings.copyWith(connection: v.first),
+                  ),
+                  style: SegmentedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    selectedForegroundColor: Colors.white,
+                    selectedBackgroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.borderStrong),
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Porta',
-                    style:
-                        TextStyle(color: AppColors.textPrimary, fontSize: 14)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _portController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: AppTheme.inputDecoration(
-                    hint: '9100',
-                    prefixIcon: Icons.lan_outlined,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Impressoras térmicas de rede usam a porta RAW 9100. '
-                  'O IP precisa ser fixo — reserve-o no roteador.',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
+                if (_settings.connection == PrinterConnection.network)
+                  ..._networkFields()
+                else
+                  ..._usbFields(),
               ],
             ),
           ),
@@ -321,6 +349,117 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
         ),
       ],
     );
+  }
+
+  List<Widget> _networkFields() => [
+        const Text('Endereço IP da impressora',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _hostController,
+          keyboardType: TextInputType.text,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: AppTheme.inputDecoration(
+            hint: '192.168.0.100',
+            prefixIcon: Icons.print_outlined,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Porta',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _portController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: AppTheme.inputDecoration(
+            hint: '9100',
+            prefixIcon: Icons.lan_outlined,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Impressoras térmicas de rede usam a porta RAW 9100. '
+          'O IP precisa ser fixo — reserve-o no roteador.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+      ];
+
+  List<Widget> _usbFields() {
+    if (!_usbSupported) {
+      return const [
+        Text(
+          'A impressão USB só funciona no app desktop do Windows. '
+          'Neste dispositivo use uma impressora de rede.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+        ),
+      ];
+    }
+
+    final selected = _settings.usbPrinterName.trim();
+    // Mantém na lista uma impressora salva que não apareceu no enum (ex.: USB
+    // desconectada no momento), para o operador não perder a escolha.
+    final items = <String>[
+      ..._usbPrinters,
+      if (selected.isNotEmpty && !_usbPrinters.contains(selected)) selected,
+    ];
+
+    return [
+      Row(
+        children: [
+          const Expanded(
+            child: Text('Impressora do Windows',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+          ),
+          TextButton.icon(
+            onPressed: _loadingUsb ? null : _refreshUsbPrinters,
+            icon: _loadingUsb
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        color: AppColors.primary, strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh, size: 18),
+            label: const Text('Atualizar'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      if (items.isEmpty)
+        const Text(
+          'Nenhuma impressora instalada encontrada. Instale o driver da '
+          'impressora USB no Windows e toque em Atualizar.',
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        )
+      else
+        DropdownButtonFormField<String>(
+          initialValue: selected.isEmpty ? null : selected,
+          isExpanded: true,
+          dropdownColor: AppColors.surface,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: AppTheme.inputDecoration(
+            hint: 'Selecione a impressora',
+            prefixIcon: Icons.usb,
+          ),
+          items: [
+            for (final name in items)
+              DropdownMenuItem(value: name, child: Text(name)),
+          ],
+          onChanged: (v) => setState(
+            () => _settings =
+                _settings.copyWith(usbPrinterName: v ?? ''),
+          ),
+        ),
+      const SizedBox(height: 8),
+      const Text(
+        'Escolha a impressora térmica instalada no Windows. Os cupons vão '
+        'crus (ESC/POS), sem passar pela renderização do driver.',
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+      ),
+    ];
   }
 
   Widget _sectionTitle(String title) => Padding(

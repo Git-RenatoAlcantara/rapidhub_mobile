@@ -2,7 +2,7 @@ name: rapidhubmobile
 description: A new Flutter project.
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.3+3
 
 environment:
   sdk: ^3.0.0
@@ -27,6 +27,7 @@ dependencies:
   tray_manager: ^0.5.3
   launch_at_startup: ^0.5.1
   package_info_plus: ^9.0.1
+  ffi: ^2.1.0
 
 dev_dependencies:
   flutter_test:

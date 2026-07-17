@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../cardapio_screen.dart';
 import '../chat_list_screen.dart';
 import '../configuracoes_screen.dart';
+import '../desktop/update_checker.dart';
 import '../pedidos_screen.dart';
 import '../profile_screen.dart';
 import '../theme/app_theme.dart';
@@ -94,28 +97,61 @@ class _DesktopShellState extends State<_DesktopShell> {
   /// linhas de 1900px é ilegível.
   static const double _maxContentWidth = 1400;
 
+  String _version = '';
+  UpdateInfo? _update;
+  bool _updateDismissed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersionAndUpdate();
+  }
+
+  Future<void> _loadVersionAndUpdate() async {
+    final info = await PackageInfo.fromPlatform();
+    final update = await const UpdateChecker().check();
+    if (!mounted) return;
+    setState(() {
+      _version = info.version;
+      _update = update;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showUpdate = _update != null && !_updateDismissed;
     return DesktopScope(
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: Row(
+        body: Column(
           children: [
-            _Sidebar(
-              current: _tab,
-              onSelect: (t) => setState(() => _tab = t),
-            ),
+            if (showUpdate)
+              _UpdateBar(
+                info: _update!,
+                onDismiss: () => setState(() => _updateDismissed = true),
+              ),
             Expanded(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints:
-                      const BoxConstraints(maxWidth: _maxContentWidth),
-                  child: IndexedStack(
-                    index: _tab.index,
-                    children: [for (final t in AppTab.values) t.screen],
+              child: Row(
+                children: [
+                  _Sidebar(
+                    current: _tab,
+                    version: _version,
+                    onSelect: (t) => setState(() => _tab = t),
                   ),
-                ),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints:
+                            const BoxConstraints(maxWidth: _maxContentWidth),
+                        child: IndexedStack(
+                          index: _tab.index,
+                          children: [for (final t in AppTab.values) t.screen],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -125,10 +161,61 @@ class _DesktopShellState extends State<_DesktopShell> {
   }
 }
 
+/// Faixa fina no topo avisando que saiu versão nova, com botão que abre o
+/// download do instalador no navegador.
+class _UpdateBar extends StatelessWidget {
+  const _UpdateBar({required this.info, required this.onDismiss});
+
+  final UpdateInfo info;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.system_update, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Nova versão ${info.version} disponível.',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+            TextButton(
+              onPressed: () => launchUrl(
+                Uri.parse(info.downloadUrl),
+                mode: LaunchMode.externalApplication,
+              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              child: const Text('Atualizar',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              onPressed: onDismiss,
+              icon: const Icon(Icons.close, color: Colors.white, size: 18),
+              tooltip: 'Depois',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.current, required this.onSelect});
+  const _Sidebar({
+    required this.current,
+    required this.version,
+    required this.onSelect,
+  });
 
   final AppTab current;
+  final String version;
   final ValueChanged<AppTab> onSelect;
 
   @override
@@ -162,11 +249,12 @@ class _Sidebar extends StatelessWidget {
                 onTap: () => onSelect(tab),
               ),
             const Spacer(),
-            const Padding(
-              padding: EdgeInsets.all(20),
+            Padding(
+              padding: const EdgeInsets.all(20),
               child: Text(
-                'RapidHub • 1.0.0',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                version.isEmpty ? 'RapidHub' : 'RapidHub • $version',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 11),
               ),
             ),
           ],

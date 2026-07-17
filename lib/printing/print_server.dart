@@ -85,7 +85,8 @@ class PrintServer {
         await _json(res, HttpStatus.ok, {
           'ok': true,
           'configured': settings.isConfigured,
-          'printer': settings.host,
+          'connection': settings.connection.name,
+          'printer': settings.target,
         });
         return;
       }

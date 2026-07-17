@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../orders/orders_api.dart';
 import 'escpos.dart';
 import 'printer_settings.dart';
+import 'windows_raw_printer.dart';
 
 /// Falha ao falar com a impressora — mensagem já pronta para a UI.
 class PrinterException implements Exception {
@@ -16,10 +17,12 @@ class PrinterException implements Exception {
   String toString() => message;
 }
 
-/// Envia cupons ESC/POS para uma impressora térmica de rede (porta RAW 9100).
+/// Envia cupons ESC/POS para a impressora térmica, por rede (TCP RAW 9100) ou
+/// por USB (spool RAW do Windows).
 ///
-/// Usa apenas `dart:io`, então roda no Windows, macOS, Linux, Android e iOS
-/// sem plugin nativo.
+/// O caminho de rede usa só `dart:io` (roda em qualquer plataforma). O caminho
+/// USB liga na API de spool do Windows via `dart:ffi` — só existe no desktop
+/// Windows.
 class ThermalPrinter {
   const ThermalPrinter(this.settings);
 
@@ -48,6 +51,30 @@ class ThermalPrinter {
     if (!settings.isConfigured) {
       throw const PrinterException('Impressora não configurada.');
     }
+    final n = copies < 1 ? 1 : copies;
+    switch (settings.connection) {
+      case PrinterConnection.network:
+        await _sendNetwork(bytes, n);
+      case PrinterConnection.usb:
+        await _sendUsb(bytes, n);
+    }
+  }
+
+  Future<void> _sendUsb(Uint8List bytes, int copies) async {
+    if (!Platform.isWindows) {
+      throw const PrinterException(
+          'Impressão USB só está disponível no app desktop do Windows.');
+    }
+    try {
+      for (var i = 0; i < copies; i++) {
+        WindowsRawPrinter.printRaw(settings.usbPrinterName.trim(), bytes);
+      }
+    } on Exception catch (e) {
+      throw PrinterException(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _sendNetwork(Uint8List bytes, int copies) async {
     Socket? socket;
     try {
       socket = await Socket.connect(
@@ -55,7 +82,7 @@ class ThermalPrinter {
         settings.port,
         timeout: _timeout,
       );
-      for (var i = 0; i < (copies < 1 ? 1 : copies); i++) {
+      for (var i = 0; i < copies; i++) {
         socket.add(bytes);
       }
       await socket.flush().timeout(_timeout);
