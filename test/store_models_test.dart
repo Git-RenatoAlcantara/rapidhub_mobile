@@ -219,6 +219,38 @@ void main() {
     });
   });
 
+  group('PreOrder', () {
+    test('fromMetadata cai nos padrões com valores inválidos', () {
+      final po = PreOrder.fromMetadata({
+        'preOrder': {'enabled': true, 'leadMinutes': -5, 'maxHoursAhead': 'x'},
+      });
+      expect(po.enabled, true);
+      expect(po.leadMinutes, 0);
+      expect(po.maxHoursAhead, 24);
+    });
+
+    test('sem preOrder salvo vira o padrão desligado', () {
+      final po = PreOrder.fromMetadata(const {});
+      expect(po.enabled, false);
+      expect(po.maxHoursAhead, 24);
+    });
+
+    test('toMetadata força janela mínima de 1 hora', () {
+      final po = PreOrder(enabled: true, leadMinutes: 15, maxHoursAhead: 0);
+      expect(po.toMetadata(),
+          {'enabled': true, 'leadMinutes': 15, 'maxHoursAhead': 1});
+    });
+  });
+
+  group('halfPriceRule', () {
+    test('só aceita as regras do webapp', () {
+      expect(parseHalfPriceRule('expensive'), 'expensive');
+      expect(parseHalfPriceRule('average'), 'average');
+      expect(parseHalfPriceRule('outra'), '');
+      expect(parseHalfPriceRule(null), '');
+    });
+  });
+
   group('PickupTime', () {
     test('toMetadata faz trim do estimate', () {
       final pt = PickupTime(enabled: true, estimate: '  20 a 30 min  ');

@@ -48,6 +48,7 @@ class _PedidosScreenState extends State<PedidosScreen> {
   /// de entrega e retirada.
   static const List<(String, String?)> _filters = [
     ('Todos', null),
+    ('Agendados', 'scheduled'),
     ('Recebidos', 'received'),
     ('Em preparo', 'preparing'),
     ('Prontos', 'ready'),
@@ -95,10 +96,10 @@ class _PedidosScreenState extends State<PedidosScreen> {
     if (!mounted) return;
     setState(() => _applyIncoming(event.order));
 
-    // Pedido novo já sai na impressora — é o ponto do stream.
-    if (event.type == OrderEventType.created) {
-      unawaited(_autoPrint(event.order));
-    }
+    // Pedido novo já sai na impressora — é o ponto do stream. A pré-venda
+    // nasce `scheduled` e não imprime agora: `_autoPrint` só aceita `received`,
+    // então a comanda sai na mudança de status, quando entra na cozinha.
+    unawaited(_autoPrint(event.order));
   }
 
   /// Insere ou atualiza o pedido nas duas listas, respeitando o filtro ativo.
@@ -172,6 +173,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   Color _statusColor(OrderStatus status) {
     switch (status) {
+      case OrderStatus.scheduled:
+        return const Color(0xFFD29922);
       case OrderStatus.received:
         return AppColors.ai;
       case OrderStatus.preparing:
@@ -332,6 +335,9 @@ class _PedidosScreenState extends State<PedidosScreen> {
   /// entrega"; retirada por "Aguardando retirada". As duas convergem em Concluído.
   List<OrderStatus> _statusFlow(Order order) {
     return [
+      // Pré-venda: o nó fica na timeline mesmo depois de liberado, porque
+      // `scheduledFor` continua preenchido — é o histórico do agendamento.
+      if (order.scheduledFor != null) OrderStatus.scheduled,
       OrderStatus.received,
       OrderStatus.preparing,
       OrderStatus.ready,
@@ -342,6 +348,8 @@ class _PedidosScreenState extends State<PedidosScreen> {
 
   IconData _statusIcon(OrderStatus s) {
     switch (s) {
+      case OrderStatus.scheduled:
+        return Icons.schedule;
       case OrderStatus.received:
         return Icons.receipt_long_outlined;
       case OrderStatus.preparing:
@@ -855,6 +863,17 @@ class _OrderTile extends StatelessWidget {
     return '$h:$m';
   }
 
+  /// "às 18:30" quando é hoje; "13/07 às 18:30" nos outros dias — o operador
+  /// precisa saber que o pedido não é para hoje.
+  String _when(DateTime dt) {
+    final now = DateTime.now();
+    final sameDay =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final hour = '${two(dt.hour)}:${two(dt.minute)}';
+    return sameDay ? 'às $hour' : '${two(dt.day)}/${two(dt.month)} às $hour';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -916,6 +935,15 @@ class _OrderTile extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (order.status == OrderStatus.scheduled &&
+                        order.scheduledFor != null) ...[
+                      const SizedBox(height: 4),
+                      Text('Entra na cozinha ${_when(order.scheduledFor!)}',
+                          style: const TextStyle(
+                              color: Color(0xFFD29922),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600)),
+                    ],
                     const SizedBox(height: 4),
                     Text(order.itemsSummary,
                         maxLines: 1,

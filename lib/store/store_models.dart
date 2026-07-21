@@ -56,6 +56,29 @@ String parseAbandonmentStage(Object? raw) {
 }
 
 // ============================================================
+// Pizza meio-a-meio (store.halfPriceRule)
+// ============================================================
+
+/// Como cobrar uma pizza com dois ou mais sabores. String vazia = desligado —
+/// o agente recusa o meio-a-meio e oferece sabor único, em vez de somar duas
+/// pizzas inteiras e dobrar o total silenciosamente.
+class HalfPriceRuleOption {
+  const HalfPriceRuleOption(this.value, this.label);
+  final String value;
+  final String label;
+}
+
+const List<HalfPriceRuleOption> kHalfPriceRules = [
+  HalfPriceRuleOption('', 'Desligado (só sabor único)'),
+  HalfPriceRuleOption('expensive', 'Cobrar o sabor mais caro'),
+  HalfPriceRuleOption('average', 'Cobrar a média dos sabores'),
+];
+
+/// Qualquer valor fora do enum do webapp vira desligado.
+String parseHalfPriceRule(Object? raw) =>
+    (raw == 'expensive' || raw == 'average') ? raw.toString() : '';
+
+// ============================================================
 // Grupo da cozinha
 // ============================================================
 
@@ -431,6 +454,59 @@ DeliveryZonesValidation validateDeliveryZones(DeliveryZones value) {
 String fmtBRL(double n) {
   if (n == n.roundToDouble()) return n.toInt().toString();
   return n.toStringAsFixed(2).replaceAll('.', ',');
+}
+
+// ============================================================
+// Pré-venda (store.preOrder)
+// ============================================================
+
+/// Pedido fechado com a loja fechada e agendado para a abertura. Depende do
+/// horário de funcionamento estar configurado — sem horário, a loja nunca está
+/// "fechada" e a pré-venda nunca dispara.
+class PreOrder {
+  PreOrder({
+    required this.enabled,
+    required this.leadMinutes,
+    required this.maxHoursAhead,
+  });
+
+  bool enabled;
+
+  /// Minutos após a abertura em que o preparo começa.
+  int leadMinutes;
+
+  /// Só aceita pré-venda se a loja abrir dentro desta janela (horas).
+  int maxHoursAhead;
+
+  factory PreOrder.initial() =>
+      PreOrder(enabled: false, leadMinutes: 0, maxHoursAhead: 24);
+
+  /// Lê `store.preOrder` para o formato do editor.
+  factory PreOrder.fromMetadata(dynamic metadata) {
+    final po = (metadata is Map) ? metadata['preOrder'] : null;
+    if (po is! Map) return PreOrder.initial();
+
+    int number(Object? raw, int fallback) {
+      if (raw is num && raw.isFinite && raw >= 0) return raw.round();
+      return fallback;
+    }
+
+    return PreOrder(
+      enabled: po['enabled'] == true,
+      leadMinutes: number(po['leadMinutes'], 0),
+      maxHoursAhead: number(po['maxHoursAhead'], 24),
+    );
+  }
+
+  /// Converte para o formato salvo em `store.preOrder`.
+  Map<String, dynamic> toMetadata() => {
+        'enabled': enabled,
+        'leadMinutes': leadMinutes < 0 ? 0 : leadMinutes,
+        // Zero desligaria a pré-venda na prática; o mínimo útil é 1 hora.
+        'maxHoursAhead': maxHoursAhead < 1 ? 1 : maxHoursAhead,
+      };
+
+  String get signature => jsonEncode(toMetadata());
 }
 
 // ============================================================

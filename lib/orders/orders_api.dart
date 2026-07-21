@@ -100,6 +100,9 @@ class OrdersApi {
 
 /// Status do pedido, espelhando a máquina de estados do backend.
 enum OrderStatus {
+  /// Pré-venda: pedido fechado com a loja fechada. Entra na cozinha sozinho na
+  /// hora marcada (`scheduledFor`) e só então vira `received`.
+  scheduled,
   received,
   preparing,
   ready,
@@ -111,6 +114,8 @@ enum OrderStatus {
 
   static OrderStatus parse(String raw) {
     switch (raw) {
+      case 'scheduled':
+        return OrderStatus.scheduled;
       case 'received':
         return OrderStatus.received;
       case 'preparing':
@@ -132,6 +137,8 @@ enum OrderStatus {
 
   String get label {
     switch (this) {
+      case OrderStatus.scheduled:
+        return 'Agendado';
       case OrderStatus.received:
         return 'Recebido';
       case OrderStatus.preparing:
@@ -247,6 +254,7 @@ class Order {
     this.notes,
     this.subtotal = 0,
     this.deliveryFee = 0,
+    this.scheduledFor,
   });
 
   final String id;
@@ -277,6 +285,10 @@ class Order {
 
   final double subtotal;
   final double deliveryFee;
+
+  /// Quando o pedido de pré-venda entra na cozinha. Continua preenchido depois
+  /// da liberação — é o registro de que o pedido nasceu agendado.
+  final DateTime? scheduledFor;
 
   bool get isPickup => fulfillment == 'pickup';
 
@@ -329,6 +341,8 @@ class Order {
       deliveryFee: (json['deliveryFee'] is num)
           ? (json['deliveryFee'] as num).toDouble()
           : 0,
+      scheduledFor: DateTime.tryParse((json['scheduledFor'] ?? '').toString())
+          ?.toLocal(),
     );
   }
 

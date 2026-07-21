@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'campaigns/campaigns_api.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_logo.dart';
 import 'store/store_api.dart';
@@ -11,6 +12,7 @@ import 'store/menu_mode_editor.dart';
 import 'store/operating_hours_editor.dart';
 import 'store/delivery_zones_editor.dart';
 import 'store/pickup_time_editor.dart';
+import 'store/pre_order_editor.dart';
 
 /// Configurações da Loja (nível de organização): grupo da cozinha, horário de
 /// funcionamento, frete e tempo de retirada. Salvas em
@@ -28,6 +30,7 @@ class StoreScreen extends StatefulWidget {
 
 class _StoreScreenState extends State<StoreScreen> {
   late final StoreApi _api = widget._injectedApi ?? StoreApi();
+  late final CampaignsApi _campaignsApi = CampaignsApi();
 
   bool _loading = true;
   bool _saving = false;
@@ -39,7 +42,14 @@ class _StoreScreenState extends State<StoreScreen> {
   OperatingHours _operatingHours = OperatingHours.initial();
   DeliveryZones _deliveryZones = DeliveryZones.initial();
   PickupTime _pickupTime = PickupTime.initial();
+  PreOrder _preOrder = PreOrder.initial();
   String _abandonmentStage = kDefaultAbandonmentStage;
+  String _abandonmentCouponId = '';
+  String _halfPriceRule = '';
+
+  /// Cupons ativos para o seletor da recuperação. Fica vazio quando o módulo de
+  /// Campanhas está desligado — o resto da tela continua funcionando.
+  List<CouponChoice> _coupons = const [];
 
   String _savedSignature = '';
 
@@ -59,7 +69,10 @@ class _StoreScreenState extends State<StoreScreen> {
       'operatingHours': _operatingHours.signature,
       'deliveryZones': _deliveryZones.signature,
       'pickupTime': _pickupTime.signature,
+      'preOrder': _preOrder.signature,
       'abandonmentTriggerStage': _abandonmentStage,
+      'abandonmentCouponId': _abandonmentCouponId,
+      'halfPriceRule': _halfPriceRule,
     });
   }
 
@@ -80,11 +93,15 @@ class _StoreScreenState extends State<StoreScreen> {
         _operatingHours = OperatingHours.fromMetadata(store);
         _deliveryZones = DeliveryZones.fromMetadata(store);
         _pickupTime = PickupTime.fromMetadata(store);
+        _preOrder = PreOrder.fromMetadata(store);
         _abandonmentStage =
             parseAbandonmentStage(store['abandonmentTriggerStage']);
+        _abandonmentCouponId = (store['abandonmentCouponId'] ?? '').toString();
+        _halfPriceRule = parseHalfPriceRule(store['halfPriceRule']);
         _savedSignature = _signature();
         _loading = false;
       });
+      await _loadCoupons();
     } on StoreModuleDisabled {
       if (!mounted) return;
       setState(() {
@@ -100,6 +117,29 @@ class _StoreScreenState extends State<StoreScreen> {
     }
   }
 
+  /// Cupons ativos do módulo de Campanhas. Falhar aqui não é erro de tela: a
+  /// loja pode nem ter o módulo ligado, e aí o seletor só não aparece.
+  Future<void> _loadCoupons() async {
+    try {
+      final coupons = await _campaignsApi.fetchCoupons();
+      if (!mounted) return;
+      setState(() {
+        _coupons = [
+          for (final c in coupons.where((c) => c.isActive))
+            CouponChoice(
+              id: c.id,
+              label: c.isPersonalized
+                  ? '${c.label} · exclusivo por cliente'
+                  : c.label,
+            ),
+        ];
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _coupons = const []);
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -109,7 +149,12 @@ class _StoreScreenState extends State<StoreScreen> {
         'operatingHours': _operatingHours.toMetadata(),
         'deliveryZones': _deliveryZones.toMetadata(),
         'pickupTime': _pickupTime.toMetadata(),
+        'preOrder': _preOrder.toMetadata(),
         'abandonmentTriggerStage': _abandonmentStage,
+        // '' = sem cupom / meio a meio desligado; grava null para limpar.
+        'abandonmentCouponId':
+            _abandonmentCouponId.isEmpty ? null : _abandonmentCouponId,
+        'halfPriceRule': _halfPriceRule.isEmpty ? null : _halfPriceRule,
       };
       await _api.saveStore(store);
       if (!mounted) return;
@@ -225,10 +270,29 @@ class _StoreScreenState extends State<StoreScreen> {
           onChanged: () => setState(() {}),
         ),
         const SizedBox(height: 24),
+        PreOrderEditor(
+          value: _preOrder,
+          disabled: _saving,
+          onChanged: () => setState(() {}),
+        ),
+        const SizedBox(height: 24),
         AbandonmentStageEditor(
           value: _abandonmentStage,
           disabled: _saving,
           onChanged: (v) => setState(() => _abandonmentStage = v),
+        ),
+        const SizedBox(height: 24),
+        AbandonmentCouponEditor(
+          value: _abandonmentCouponId,
+          coupons: _coupons,
+          disabled: _saving,
+          onChanged: (v) => setState(() => _abandonmentCouponId = v),
+        ),
+        const SizedBox(height: 24),
+        HalfPriceRuleEditor(
+          value: _halfPriceRule,
+          disabled: _saving,
+          onChanged: (v) => setState(() => _halfPriceRule = v),
         ),
       ],
     );

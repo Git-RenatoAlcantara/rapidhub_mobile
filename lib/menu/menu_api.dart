@@ -241,6 +241,7 @@ class MenuApi {
     String? categoryId,
     String? menuId,
     bool isAvailable = true,
+    bool allowsHalf = false,
     List<int> availableWeekdays = const [],
   }) async {
     final resp = await http.post(
@@ -253,6 +254,7 @@ class MenuApi {
         'categoryId': categoryId,
         'menuId': menuId,
         'isAvailable': isAvailable,
+        'allowsHalf': allowsHalf,
         'availableWeekdays': availableWeekdays,
       }),
     );
@@ -273,6 +275,7 @@ class MenuApi {
     String? categoryId,
     String? menuId,
     bool? isAvailable,
+    bool? allowsHalf,
     List<int>? availableWeekdays,
     bool clearCategory = false,
     bool clearMenu = false,
@@ -288,6 +291,7 @@ class MenuApi {
         if (categoryId != null || clearCategory) 'categoryId': categoryId,
         if (menuId != null || clearMenu) 'menuId': menuId,
         if (isAvailable != null) 'isAvailable': isAvailable,
+        if (allowsHalf != null) 'allowsHalf': allowsHalf,
         if (availableWeekdays != null) 'availableWeekdays': availableWeekdays,
       }),
     );
@@ -672,6 +676,7 @@ class MenuProduct {
     required this.categoryName,
     required this.imageUrl,
     required this.isAvailable,
+    this.allowsHalf = false,
     this.menuId,
     this.availableWeekdays = const [],
     this.order = 0,
@@ -688,6 +693,10 @@ class MenuProduct {
 
   /// Toggle manual do produto. `false` = fora do cardápio, sempre.
   final bool isAvailable;
+
+  /// Só sabores marcados entram numa pizza meio a meio. A regra de preço é da
+  /// loja (`store.halfPriceRule`).
+  final bool allowsHalf;
 
   final String? menuId;
 
@@ -710,6 +719,7 @@ class MenuProduct {
       categoryName: (category is Map) ? category['name']?.toString() : null,
       imageUrl: json['imageUrl']?.toString(),
       isAvailable: json['isAvailable'] != false,
+      allowsHalf: json['allowsHalf'] == true,
       menuId: json['menuId']?.toString(),
       availableWeekdays: (rawWeekdays is List)
           ? rawWeekdays

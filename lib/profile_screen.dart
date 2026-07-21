@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'campaigns/campaigns_screen.dart';
 import 'config.dart';
 import 'connections/new_connection_screen.dart';
 import 'login_screen.dart';
@@ -224,6 +225,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(
                     builder: (context) => const StoreDashboardScreen()),
+              );
+            },
+          ),
+          _buildTile(
+            icon: Icons.campaign_outlined,
+            title: 'Campanhas e cupons',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const CampaignsScreen()),
               );
             },
           ),

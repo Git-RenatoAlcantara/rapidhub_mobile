@@ -42,6 +42,7 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
   String? _categoryId;
   String? _menuId;
   bool _isAvailable = true;
+  bool _allowsHalf = false;
   final Set<int> _weekdays = <int>{};
   List<MenuOptionGroup> _groups = [];
 
@@ -68,6 +69,7 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
       _categoryId = product.categoryId;
       _menuId = product.menuId;
       _isAvailable = product.isAvailable;
+      _allowsHalf = product.allowsHalf;
       _weekdays.addAll(product.availableWeekdays);
       _groups = product.optionGroups.map((g) => g.copy()).toList();
       _loadOverrides();
@@ -156,6 +158,7 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
           clearCategory: _categoryId == null,
           clearMenu: _menuId == null,
           isAvailable: _isAvailable,
+          allowsHalf: _allowsHalf,
           availableWeekdays: weekdays,
         );
       } else {
@@ -166,6 +169,7 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
           categoryId: _categoryId,
           menuId: _menuId,
           isAvailable: _isAvailable,
+          allowsHalf: _allowsHalf,
           availableWeekdays: weekdays,
         );
         productId = created.id;
@@ -445,6 +449,22 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
                 style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
             subtitle: const Text(
               'Desligado, o item sai do cardápio em qualquer dia.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _card(
+          child: SwitchListTile(
+            value: _allowsHalf,
+            onChanged: _saving ? null : (v) => setState(() => _allowsHalf = v),
+            activeThumbColor: AppColors.primary,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            title: const Text('Aceita meio a meio',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+            subtitle: const Text(
+              'Só sabores marcados entram numa pizza de dois sabores. O preço '
+              'segue a regra da loja.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ),

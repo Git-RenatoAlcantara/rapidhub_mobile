@@ -423,7 +423,10 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
   // ── Pipeline de pedidos por etapa ────────────────────────────────────────
 
   Widget _buildPipelineCard() {
-    const stages = <OrderStatus>[
+    // A pré-venda só ocupa espaço quando há pedido agendado — loja que não usa
+    // o recurso não ganha uma linha morta no painel.
+    final stages = <OrderStatus>[
+      if (_countByStatus(OrderStatus.scheduled) > 0) OrderStatus.scheduled,
       OrderStatus.received,
       OrderStatus.preparing,
       OrderStatus.ready,
@@ -501,6 +504,8 @@ class _StoreDashboardScreenState extends State<StoreDashboardScreen> {
 
   IconData _statusIcon(OrderStatus status) {
     switch (status) {
+      case OrderStatus.scheduled:
+        return Icons.schedule;
       case OrderStatus.received:
         return Icons.inbox_outlined;
       case OrderStatus.preparing:
